@@ -27,14 +27,8 @@ Apache airflow merupakan sebuah tools open-sources untuk mejadwalkan and memonit
 4. DAG run: Eksekusi individual masing-masing node DAG
 
 ### Dagster
-#### Konsep dasar Dagster
-1. op: Unit kerja terkecil
-2. graph: Rangkaian op yang saling terhubung
-3. job: Eksekusi dari garph dan penjadwalannya
-4. asset: Reprensentasi data sebagai "produk" yang dihasilkan dan digunakan
-5. schedule/sensor: Untuk memastikan kapan job akan berjalan
 
-##### Asset
+#### Asset
 Merepresentasikan sumber data yang terdapat di dalam pipeline.
 Snippet:
 ```
@@ -59,7 +53,7 @@ def duckdb_table(
         conn.execute(f"COPY {table_name} FROM '{import_file}';")
 ```
 
-##### Asset check
+#### Asset check
 Digunakan untuk memvalidasi data dalam suatu asset
 Snippet:
 ```python
@@ -90,7 +84,7 @@ def not_empty(
 
 kode tersebut digunakan untuk mengecek apakah terdapat value null pada kolom share_price
 
-##### Definitions
+#### Definitions
 Digunakan untuk menyatakan dan menghubungkan segala aspek dalam dag, seperti asset, resource, sensor, job, dll.
 Snippet:
 ```python
@@ -102,3 +96,27 @@ def my_definitions():
     )
 
 ```
+
+#### Dependency
+Hubungan antar assets
+
+1. Downstream = asset membutuhkan asset yang lain untuk dijalankan
+2. Upstream = asset dibutuhkan oleh asset yang lain
+
+#### Resources
+Merupakan sebuah external dependency untuk pipeline dan asset. Seperti API tempat data diambil, database dimana data disimpian, dll.
+
+#### Jobs
+Kumpulan tugas yang dijalankan bersama-sama untuk mencapai tujuan.
+
+#### Schedule
+Kapan sebuah tugas akan dilakukan, biasanya disetel menggunakan cron.
+
+#### Partitions
+Membagi-bagi data menjadi beberapa pecahan untuk memudahkan re-run, debugging, dan optimisasi performa.
+
+#### Backfills
+memproses ulang data historis untuk satu atau banyak partisi sekaligus.
+
+#### Sensor
+komponen yang secara terus-menerus memantau kondisi eksternal dan menjalankan job secara otomatis jika kondisi tertentu terpenuhi.
