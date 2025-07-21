@@ -27,8 +27,10 @@ Apache airflow merupakan sebuah tools open-sources untuk mejadwalkan and memonit
 4. DAG run: Eksekusi individual masing-masing node DAG
 
 ### Dagster
+Dagster merupakan sebuah asset-centric data orchestration tools.
 
-#### Asset
+# Dagster Essential
+## Asset
 Merepresentasikan sumber data yang terdapat di dalam pipeline.
 Snippet:
 ```
@@ -53,7 +55,7 @@ def duckdb_table(
         conn.execute(f"COPY {table_name} FROM '{import_file}';")
 ```
 
-#### Asset check
+## Asset check
 Digunakan untuk memvalidasi data dalam suatu asset
 Snippet:
 ```python
@@ -84,7 +86,7 @@ def not_empty(
 
 kode tersebut digunakan untuk mengecek apakah terdapat value null pada kolom share_price
 
-#### Definitions
+## Definitions
 Digunakan untuk menyatakan dan menghubungkan segala aspek dalam dag, seperti asset, resource, sensor, job, dll.
 Snippet:
 ```python
@@ -97,26 +99,56 @@ def my_definitions():
 
 ```
 
-#### Dependency
+## Dependency
 Hubungan antar assets
 
 1. Downstream = asset membutuhkan asset yang lain untuk dijalankan
 2. Upstream = asset dibutuhkan oleh asset yang lain
 
-#### Resources
+## Resources
 Merupakan sebuah external dependency untuk pipeline dan asset. Seperti API tempat data diambil, database dimana data disimpian, dll.
 
-#### Jobs
+## Jobs
 Kumpulan tugas yang dijalankan bersama-sama untuk mencapai tujuan.
 
-#### Schedule
+## Schedule
 Kapan sebuah tugas akan dilakukan, biasanya disetel menggunakan cron.
 
-#### Partitions
-Membagi-bagi data menjadi beberapa pecahan untuk memudahkan re-run, debugging, dan optimisasi performa.
+## Partitions
+Membagi-bagi data menjadi beberapa pecahan untuk memudahkan re-run, debugging, dan optimisasi performa. Terdapat 3 jenis partition, regular dan dynamic.
 
-#### Backfills
+1. Partition: digunakan untuk dataset yang strukturnya tidak berubah
+2. Dynamic Partition: digunakan untuk dataset yang strukturnya dapat berubah-ubah
+3. Triggering Partition: membagi data berdasarkan suatu kejadian yang menyalakan sensor
+
+## Backfills
 memproses ulang data historis untuk satu atau banyak partisi sekaligus.
 
-#### Sensor
+## Sensor
 komponen yang secara terus-menerus memantau kondisi eksternal dan menjalankan job secara otomatis jika kondisi tertentu terpenuhi.
+
+# Dagster and ETL
+## API
+1. Langkah pertama: Membuat resources
+2. Langkah kedua: Jangan lupa masukkan ke definition
+
+### Time bounding
+Dilakukan dengan cara mengambil data yang sebelumnya. Pada contoh kasus, apabila kita mengambil data terbaru, kita tidak dapat yakin bahwa data tersebut telah selesai diupdate, oleh karena itu kita mengambil data versi sebelumnya.
+
+## DLT
+Biasanya menggunakan dagster-dlt-translator seperti ini
+```python
+class CustomDagsterDltTranslator(DagsterDltTranslator):
+    def get_asset_spec(self, data: DltResourceTranslatorData) -> dg.AssetSpec:
+        default_spec = super().get_asset_spec(data)
+        return default_spec.replace_attributes(
+            deps=[dg.AssetKey("import_file")],
+        )
+
+@dlt_assets(
+    ...
+    dagster_dlt_translator=CustomDagsterDltTranslator(),
+)
+
+```
+## Sling (untuk database)
