@@ -55,6 +55,12 @@ def duckdb_table(
         conn.execute(f"COPY {table_name} FROM '{import_file}';")
 ```
 
+Jenis-jenis asset:
+1. Asset
+2. Multi-asset
+3. Graph-asset
+4. Graph-multi-asset
+
 ## Asset check
 Digunakan untuk memvalidasi data dalam suatu asset
 Snippet:
@@ -100,7 +106,7 @@ def my_definitions():
 ```
 
 ## Dependency
-Hubungan antar assets
+Hubungan antar assets, di declare di dalam asset
 
 1. Downstream = asset membutuhkan asset yang lain untuk dijalankan
 2. Upstream = asset dibutuhkan oleh asset yang lain
@@ -115,9 +121,9 @@ Kumpulan tugas yang dijalankan bersama-sama untuk mencapai tujuan.
 Kapan sebuah tugas akan dilakukan, biasanya disetel menggunakan cron.
 
 ## Partitions
-Membagi-bagi data menjadi beberapa pecahan untuk memudahkan re-run, debugging, dan optimisasi performa. Terdapat 3 jenis partition, regular dan dynamic.
+Membagi-bagi data menjadi beberapa pecahan untuk memudahkan re-run, debugging, dan optimisasi performa. Terdapat 3 jenis partition, regular, dynamic, dan triggering.
 
-1. Partition: digunakan untuk dataset yang strukturnya tidak berubah
+1. Regular: digunakan untuk dataset yang strukturnya tidak berubah
 2. Dynamic Partition: digunakan untuk dataset yang strukturnya dapat berubah-ubah
 3. Triggering Partition: membagi data berdasarkan suatu kejadian yang menyalakan sensor
 
@@ -152,3 +158,8 @@ class CustomDagsterDltTranslator(DagsterDltTranslator):
 
 ```
 ## Sling (untuk database)
+Sling merupakan alat replikasi yang menyalin data dari database sumber dan menjadikannya sebuah asset di dagster.
+
+Cara kerja:
+1. Dagster akan membaca file YAML untuk mengetahui credential dan tabel mana yang ingin dibaca dalam database
+2. Dengan menggunakan sling, data yang dibaca akan direplikasi ke dalam bentuk asset menggunakan decorator @sling_assets
