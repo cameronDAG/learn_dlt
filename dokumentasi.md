@@ -1,4 +1,4 @@
-# Dokumentasi
+# Version 1
 ## Setting dbt untuk connect ke snowflake
 Tanggal dilakukan: 22 Juli 2025
 
@@ -331,4 +331,137 @@ class CustomizedDagsterDbtTranslator(DagsterDbtTranslator):
         else:
             return super().get_asset_key(dbt_resource_props)
 ```
+
+# Version 2 - menambahkan asset baru dari google drive sheets
+## Install library yang belum ada
+1. uv pip install google
+2. uv pip install google-api-python-client
+3. uv pip install pandas
+4. uv pip install dlt[parquet]
+
+## Melakukan setting credential menggunakan service_account.json
+Cara mendapatkan file tersebut:
+1. Akses link https://console.cloud.google.com/
+2. Buat project baru
+3. Aktifkan API yang dibutuhkan
+4. Buat service account baru
+5. Pencet tab Key, create new key, json
+
+file service_account.json kemudian ditaruh ke dalam directory project
+``` py
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets.readonly"
+]
+
+creds = service_account.Credentials.from_service_account_file(
+    r"service_account.json",  # Replace with your actual key path
+    scopes=SCOPES
+)
+sheets_service = build("sheets", "v4", credentials=creds)
+```
+## Melakukan define resources dan pipeline dlt
+Membuat resource baru untuk mengambil data dari spreadsheet
+``` py
+@dlt.resource(table_name='investor_list')
+def get_investors():
+    spreadsheet_id = "1lLf0mLzWC_tcbPc3aXsgRLpQtr_P5Yb6DKn-1j152P8"
+    range_name = "Sheet1"  # change this to match your actual sheet/tab name
+
+    result = sheets_service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=range_name
+    ).execute()
+
+    values = result.get("values", [])
+    if not values:
+        print("No data found.")
+        return
+
+    # Assume first row is header
+    df = pd.DataFrame(values[1:], columns=values[0])
+    yield df
+```
+## Membuat asset dagster untuk menjalankan pipeline berisi resource tersebut
+1. Mendefinisikan asset
+``` py
+@asset
+def run_investor_list_asset():
+    print("Running DLT pipeline for investors")
+    run_investors_pipeline()
+```
+
+2. Mencoba menjalankan asset di dagster UI
+
+Masalah yang dialami:
+1. https://sheets.googleapis.com/v4/spreadsheets/1lLf0mLzWC_tcbPc3aXsgRLpQtr_P5Yb6DKn-1j152P8/values/Sheet1?alt=json returned "The caller does not have permission".
+
+Solusi:
+1. add email service_accountnya ke dalam akses google sheet oleh host/pemiliknya
+
+## Setting sourcenya di dalam dbt
+dilakukan agar dbt mengenali data yang mau diambil dari table snowflake 
+```
+  - name: investors
+    database: MANAJEMEN_KOS
+    schema: RAW_INVESTORS
+    description: data investor
+    tables:
+      - name: investor_list
+        description: investor
+```
+
+## Membuat model dim_investors
+1. Membuat file .sql yang akan mengambil data dari source investors
+2. Mendeklarasikan model di dalam schema.yml
+
+```sql
+with
+
+source as (
+
+    select * from {{ source('investors', 'investor_list') }}
+
+)
+
+select * from source
+```
+
+## Menjalankan dbt build
+untuk memuat models dalam dbt dan melakukan pengecekan pada dagster UI
+
+Masalah:
+1. Salah satu test unique error karena terdapat data double. 
+
+Solusi:
+1. mengubah write disposition dalam dlt untuk pipeline investors menjadi replace
+
+hasil kode:
+``` py
+@dlt.resource(table_name='investor_list',write_disposition="replace")
+def get_investors():
+    spreadsheet_id = "1lLf0mLzWC_tcbPc3aXsgRLpQtr_P5Yb6DKn-1j152P8"
+    range_name = "Sheet1"  # change this to match your actual sheet/tab name
+
+    result = sheets_service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=range_name
+    ).execute()
+
+    values = result.get("values", [])
+    if not values:
+        print("No data found.")
+        return
+
+    # Assume first row is header
+    df = pd.DataFrame(values[1:], columns=values[0])
+    yield df
+
+```
+Setelah dijalankan 2x di dagster, tidak ada lagi data yang masuknya double
+
+## Menjalankan materialize di dagster untuk semua asset
+Karena dagster-dbt translator telah dibuat pada versi sebelumnya, asset run_investor_list_asset dan dim_investors sudah otomatis terhubung.
+
+Hasil:
+Semua asset berhasil dimaterialisasi
 
