@@ -343,4 +343,68 @@ Supaya bisa disebut di dalam file .yml kayak generic test. Untuk reusability
 ## Overwriting native test
 Kalau dibuat custom generic test yang namanya sama kayak generic test (uniqu, not null, relationships, accepted_values), maka ketika test dijalankan akan mengikuti logika test yang baru dibuat.
 
+## DBT Utils dan DBT Expectations
+sebuah package yang menyiapkan fungsi testing yang cukup beragam.
 
+## Audit Helper
+Package untuk membandingkan dua tabel dalam keperluan auditing dan validasi data.
+
+# DBT dan dagster
+Models dalam dbt dapat menjadi asset di dagster menggunakan @dbt_asset. Ketika proses materialize dalam dagster dijalankan, asset-asset yang berasal dari dbt dianggap menjadi satu proses. Hal ini dikarenakan dalam dbt, kita biasa menjalankan dbt run atau dbt build untuk semua modelnya sekaligus.
+
+
+# Dokumentasi
+## 30 Juli 2025
+Kalo mau create project baru dagster pake create-dagster, jangan dagster project scaffold
+Kalau ada project di file yang beda, nama pipelinenya jangan disamain, nanti nyangkut. Tadi ada pipeline namanya subcriptions_pipeline di file project_2 pas kodenya dicopy ke my_project dan di materialize, path materializationnya tetep ngarah ke folder_project2
+
+```
+GRANT USAGE ON DATABASE MANAJEMEN_KOS TO ACCOUNTADMIN;
+GRANT CREATE SCHEMA ON DATABASE MANAJEMEN_KOS TO ROLE ACCOUNTADMIN;
+GRANT USAGE ON WAREHOUSE COMPUTE_WH TO ACCOUNTADMIN;
+GRANT ALL PRIVILEGES ON FUTURE SCHEMAS IN DATABASE MANAJEMEN_KOS TO ACCOUNTADMIN;
+GRANT ALL PRIVILEGES ON FUTURE TABLES IN DATABASE MANAJEMEN_KOS TO ACCOUNTADMIN;
+
+GRANT SELECT ON TABLE MANAJEMEN_KOS.RAW_SUBSCRIPTIONS.SUBSCRIPTION_LIST TO ROLE ACCOUNTADMIN;
+```
+
+### Cara setting project dbt:
+dbt init
+setting dbt_project.yml dan buat profiles.yml
+dbt build (setting ke directory project dulu)
+dbt parse
+buat project.py di directory utama
+declare definition di defs/resources.py
+buat file dbt.py di folder asset untuk declare asset
+
+## 31 Juli 2025
+### konteks: buat nyambungin dependencies diantara model dbt dan dlt
+```
+class CustomizedDagsterDbtTranslator(DagsterDbtTranslator):
+    def get_asset_key(self, dbt_resource_props):
+        resource_type = dbt_resource_props["resource_type"]
+        name = dbt_resource_props["name"]
+        if name == "property_list":
+            return dg.AssetKey(f"run_properties_asset")
+        elif name == "subscription_list":
+            return dg.AssetKey(f"run_subscriptions_asset")
+        else:
+            return super().get_asset_key(dbt_resource_props)
+```
+
+alur kerja:
+mencari source di dbt (yang di return disini sebenarnya nama table, bukan nama source)
+apabila source yang dicari sudah ditemukan, maka source tersebut dihubungkan dengan asset dlt.
+
+Karena fungsinya masih hard-coded, baiknya setiap menamai table di data warehouse(snowflake), namanya harus terkandung dalam asset dalam dagster. Atau nama asset di dagsternya diubah
+
+```
+class CustomizedDagsterDbtTranslator(DagsterDbtTranslator):
+    def get_asset_key(self, dbt_resource_props):
+        resource_type = dbt_resource_props["resource_type"]
+        name = dbt_resource_props["name"]
+        if resource_type == "source":
+            return dg.AssetKey(f"run_{name}_asset")
+        else:
+            return super().get_asset_key(dbt_resource_props)
+```
