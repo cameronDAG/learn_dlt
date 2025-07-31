@@ -479,6 +479,20 @@ lalu, ditambahkan file assets ke dalam directory tersebut secara manual untuk me
    │   └── kos_pipeline.py
    ```
 
+### Mendefinisikan fungsi dlt sebagai asset dalam dagster
+Mmebuat asset yang ketika di-materialize akan menjalankan fungsi yang sudah dibuat menggunakan dlt
+
+```py
+@asset
+def run_property_list_asset():
+    print("Running DLT pipeline for properties")
+    run_properties_pipeline()
+
+@asset
+def run_subscription_list_asset():
+    print("Running DLT pipeline for subscriptions")
+    run_subscriptions_pipeline()
+```
 ## Membuat directory project dbt
 ### Melakukan dbt init
 Ketika menjalankan ```dbt init property_management```, akan membuat folder baru yang berisi struktur project dbt. Sehingga directory berubah menjadi
