@@ -465,3 +465,34 @@ Karena dagster-dbt translator telah dibuat pada versi sebelumnya, asset run_inve
 Hasil:
 Semua asset berhasil dimaterialisasi
 
+Masalah:
+1. Tabel investor_list tidak memiliki metadata karena pada saat pembuatan fungsi resources, data diubah menjadi dataframe terlebih dahulu baru di yield. Sehingga slt tidak langsung mengenali kolom yang ada.
+
+Solusi:
+1. Ubah cara yielding data menjadi looping
+``` py
+@dlt.resource(table_name='investor_list', write_disposition="append")
+def get_investors():
+    spreadsheet_id = "1lLf0mLzWC_tcbPc3aXsgRLpQtr_P5Yb6DKn-1j152P8"
+    range_name = "Sheet1"
+
+    result = sheets_service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=range_name
+    ).execute()
+
+    values = result.get("values", [])
+    if not values:
+        print("No data found.")
+        return
+
+    header = values[0]        # ambil nama kolom dari baris pertama
+    rows = values[1:]         # data di bawahnya
+
+    # Buat list of dict dari header dan rows
+    for row in rows:
+        yield {col: row[i] if i < len(row) else None for i, col in enumerate(header)}
+
+```
+2. hapus kolom metadata di model dbt dengan cara mengubah fungsi select ke kolom yang dibutuhkan saja
+
