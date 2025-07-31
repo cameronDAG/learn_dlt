@@ -462,7 +462,7 @@ Solusi:
   - properties_pipeline -> properties
   - subscriptions_pipeline -> subscriptions
 
-### Mengganti destination ke snowflake
+### Mengganti destination dlt dari duckdb ke snowflake
 Untuk menyesuaikan keperluan project, destination diubah ke snowflake dengan cara:
 1. Membuat database, warehouse, schema, dan user baru di snowflake
 ``` sql
@@ -483,7 +483,9 @@ GRANT USAGE ON WAREHOUSE COMPUTE_WH TO DLT_LOADER_ROLE;
 GRANT ALL PRIVILEGES ON FUTURE SCHEMAS IN DATABASE dlt_data TO DLT_LOADER_ROLE;
 GRANT ALL PRIVILEGES ON FUTURE TABLES IN DATABASE dlt_data TO DLT_LOADER_ROLE;
 ```
+
 2. Melakukan pembuatan folder .dlt yang berisi secrets.toml dengan menjalankan ```dlt init snowflake```
+
 3. Memasukkan credential akun snowflake ke dalam file tersebut.
 ```
 [destination.snowflake.credentials]
@@ -493,6 +495,18 @@ username = "loader"
 host = "kgiotue-wn98412"
 warehouse = "COMPUTE_WH"
 role = "DLT_LOADER_ROLE"
+```
+4. Mengganti destination dalam pipeline menjadi snowflake
+``` py
+def run_properties_pipeline():
+    pipeline = dlt.pipeline(
+        pipeline_name="properties",
+        destination="snowflake",
+        dataset_name="raw_properties"
+        
+    )
+    load_info = pipeline.run(properties_source())
+    print(load_info)
 ```
 
 Pada saat ini, directory project kurang lebih seperti ini
