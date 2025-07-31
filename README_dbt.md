@@ -358,6 +358,7 @@ Models dalam dbt dapat menjadi asset di dagster menggunakan @dbt_asset. Ketika p
 Kalo mau create project baru dagster pake create-dagster, jangan dagster project scaffold
 Kalau ada project di file yang beda, nama pipelinenya jangan disamain, nanti nyangkut. Tadi ada pipeline namanya subcriptions_pipeline di file project_2 pas kodenya dicopy ke my_project dan di materialize, path materializationnya tetep ngarah ke folder_project2
 
+### buat ngasih permission ngolah data dalem tabel snowflake
 ```
 GRANT USAGE ON DATABASE MANAJEMEN_KOS TO ACCOUNTADMIN;
 GRANT CREATE SCHEMA ON DATABASE MANAJEMEN_KOS TO ROLE ACCOUNTADMIN;
@@ -368,14 +369,15 @@ GRANT ALL PRIVILEGES ON FUTURE TABLES IN DATABASE MANAJEMEN_KOS TO ACCOUNTADMIN;
 GRANT SELECT ON TABLE MANAJEMEN_KOS.RAW_SUBSCRIPTIONS.SUBSCRIPTION_LIST TO ROLE ACCOUNTADMIN;
 ```
 
+
 ### Cara setting project dbt:
-dbt init
-setting dbt_project.yml dan buat profiles.yml
-dbt build (setting ke directory project dulu)
-dbt parse
-buat project.py di directory utama
-declare definition di defs/resources.py
-buat file dbt.py di folder asset untuk declare asset
+1. dbt init
+2. setting dbt_project.yml dan buat profiles.yml
+3. dbt build (setting ke directory project dulu)
+4. dbt parse
+5. buat project.py di directory utama
+6. declare definition di defs/resources.py
+7. buat file dbt.py di folder asset untuk declare asset
 
 ## 31 Juli 2025
 ### konteks: buat nyambungin dependencies diantara model dbt dan dlt
