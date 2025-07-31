@@ -399,32 +399,6 @@ def get_properties():
 ### Melakukan pengetesan dengan cara menjadikan duckdb sebagai destination terlebih dahulu
 Dari step ini, didapatkan file properties_pipeline.duckdb yang ketika dicek menggunakan dbeaver, isi filenya sudah sesuai dengan API yang di-return.
 
-### Mengganti destination ke snowflake
-Untuk menyesuaikan keperluan project, destination diubah ke snowflake dengan cara:
-1. Melakukan pembuatan folder .dlt yang berisi secrets.toml
-2. Memasukkan credential akun snowflake ke dalam file tersebut.
-
-Pada saat ini, directory project kurang lebih seperti ini
-```
-└── learn_dlt
-   ├── dlt_pipeline.py
-   ├── .dlt
-   │   └── config.toml
-   │   └── secrets.toml
-```
-
-3. Menyesuaikan fungsi untuk menjalankan pipeline dengan destination snowflake
-```py
-def run_properties_pipeline():
-    pipeline = dlt.pipeline(
-        pipeline_name="properties",
-        destination="snowflake",
-        dataset_name="raw_properties"
-        
-    )
-    load_info = pipeline.run(properties_source())
-    print(load_info)
-```
 
 ## Membuat directory file untuk dagster
 Tanggal dilakukan: 29 Juli 2025 - 30 Juli 2025
@@ -478,6 +452,70 @@ lalu, ditambahkan file assets ke dalam directory tersebut secara manual untuk me
    ├── dlt_pipeline
    │   └── kos_pipeline.py
    ```
+  
+  Masalah yang terjadi:
+1. Ketika file kos_pipeline.py dipindahkan dalam directory tersebut pada dalam kondisi destinationnya masih duckDB, filenya masih mengarah ke directory yang lama.
+Misal: seharusnya file berada dalam ```~/my_project/properties_pipeline.duckdb```, namun file masih disimpan ke dalam ```~/learn_dlt/properties_pipeline.duckdb```
+
+Solusi:
+1. Mengubah nama pipeline
+  - properties_pipeline -> properties
+  - subscriptions_pipeline -> subscriptions
+
+### Mengganti destination ke snowflake
+Untuk menyesuaikan keperluan project, destination diubah ke snowflake dengan cara:
+1. Membuat database, warehouse, schema, dan user baru di snowflake
+``` sql
+-- create database with standard settings
+CREATE DATABASE dlt_data;
+-- create new user - set your password here
+CREATE USER loader WITH PASSWORD='<password>';
+-- we assign all permissions to a role
+CREATE ROLE DLT_LOADER_ROLE;
+GRANT ROLE DLT_LOADER_ROLE TO USER loader;
+-- give database access to new role
+GRANT USAGE ON DATABASE dlt_data TO DLT_LOADER_ROLE;
+-- allow `dlt` to create new schemas
+GRANT CREATE SCHEMA ON DATABASE dlt_data TO ROLE DLT_LOADER_ROLE;
+-- allow access to a warehouse named COMPUTE_WH
+GRANT USAGE ON WAREHOUSE COMPUTE_WH TO DLT_LOADER_ROLE;
+-- grant access to all future schemas and tables in the database
+GRANT ALL PRIVILEGES ON FUTURE SCHEMAS IN DATABASE dlt_data TO DLT_LOADER_ROLE;
+GRANT ALL PRIVILEGES ON FUTURE TABLES IN DATABASE dlt_data TO DLT_LOADER_ROLE;
+```
+2. Melakukan pembuatan folder .dlt yang berisi secrets.toml dengan menjalankan ```dlt init snowflake```
+3. Memasukkan credential akun snowflake ke dalam file tersebut.
+```
+[destination.snowflake.credentials]
+database = "dlt_data"
+password = "<password>"
+username = "loader"
+host = "kgiotue-wn98412"
+warehouse = "COMPUTE_WH"
+role = "DLT_LOADER_ROLE"
+```
+
+Pada saat ini, directory project kurang lebih seperti ini
+```
+└── learn_dlt
+   ├── dlt_pipeline.py
+   ├── .dlt
+   │   └── config.toml
+   │   └── secrets.toml
+```
+
+3. Menyesuaikan fungsi untuk menjalankan pipeline dengan destination snowflake
+```py
+def run_properties_pipeline():
+    pipeline = dlt.pipeline(
+        pipeline_name="properties",
+        destination="snowflake",
+        dataset_name="raw_properties"
+        
+    )
+    load_info = pipeline.run(properties_source())
+    print(load_info)
+```
 
 ### Mendefinisikan fungsi dlt sebagai asset dalam dagster
 Mmebuat asset yang ketika di-materialize akan menjalankan fungsi yang sudah dibuat menggunakan dlt
@@ -535,14 +573,7 @@ Ketika menjalankan ```dbt init property_management```, akan membuat folder baru 
    │   └── profiles.yml       <-- ditambahkan secara manual
 
 ```
-Masalah yang terjadi:
-1. Ketika file kos_pipeline.py dipindahkan dalam directory tersebut pada dalam kondisi destinationnya masih duckDB, filenya masih mengarah ke directory yang lama.
-Misal: seharusnya file berada dalam ```~/my_project/properties_pipeline.duckdb```, namun file masih disimpan ke dalam ```~/learn_dlt/properties_pipeline.duckdb```
 
-Solusi:
-1. Mengubah nama pipeline
-  - properties_pipeline -> properties
-  - subscriptions_pipeline -> subscriptions
 
 ### Melakukan setting koneksi ke snowflake
 Dilakukan dengan cara mengubah konfigurasi di file profiles.yml
