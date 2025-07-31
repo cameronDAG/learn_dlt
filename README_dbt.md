@@ -354,9 +354,13 @@ Models dalam dbt dapat menjadi asset di dagster menggunakan @dbt_asset. Ketika p
 
 
 # Dokumentasi
+## 22 Juli 2025
+KALAU MAU PAKAI SNOWFLAKE BUAT DBT JANGAN PILIH REGION MIDDLE EAST CENTRAL SOALNYA GABISA NYAMBUNG KE DBT
+
 ## 30 Juli 2025
-Kalo mau create project baru dagster pake create-dagster, jangan dagster project scaffold
-Kalau ada project di file yang beda, nama pipelinenya jangan disamain, nanti nyangkut. Tadi ada pipeline namanya subcriptions_pipeline di file project_2 pas kodenya dicopy ke my_project dan di materialize, path materializationnya tetep ngarah ke folder_project2
+1. Kalo mau create project baru dagster pake create-dagster, jangan dagster project scaffold
+2. Kalau ada project di file yang beda, nama pipelinenya jangan disamain, nanti nyangkut.
+3. Tadi ada pipeline namanya subcriptions_pipeline di file project_2 pas kodenya dicopy ke my_project dan di materialize, path materializationnya tetep ngarah ke folder_project2
 
 ### buat ngasih permission ngolah data dalem tabel snowflake
 ```
