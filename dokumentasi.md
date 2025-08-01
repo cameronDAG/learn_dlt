@@ -494,5 +494,42 @@ def get_investors():
         yield {col: row[i] if i < len(row) else None for i, col in enumerate(header)}
 
 ```
+
+Penjelasan kode:
+
+```py
+values = result.get("values", [])
+```
+
+Buat list of dict dari header dan rows
+```py
+[['ID_apartment', 'Investor', 'Nominal'], 
+['1', 'Budi', '1000'], ['2', 'Candra', '2000'], 
+['3', 'Adul', '3000'], ['4', 'Komeng', '4000'], ['5'],
+['7', 'dudul', '57777'], [], ['8', 'bbdbd', '565']] 
+```
+masih list kan bentuknya, jadi harus diubah ke dict untuk menentukan kolomnya.
+Karena kalau list aja, dlt nggak bisa tahu kolomnya apa aja dan bisa jadi langsung 
+memasukkan literal list ke dalam tabel.
+
+```py
+for row in rows:
+```
+iterasi 1
+row = ['1', 'Budi', '1000']
+
+```py
+    yield {col: row[i] if i < len(row) else None for i, col in enumerate(header)}
+```
+iterasi 1
+i = 0, col = 'ID_apartment', row[0] = '1' -> 'ID_apartment': '1'
+
+iterasi 2
+i = 1, col = 'Investor', row[1] = 'Budi' -> 'Investor': 'Budi'
+
+iterasi 3
+i = 2, col = 'Nominal', row[2] = '1000' -> 'Nominal': '1000'
+
+
 2. hapus kolom metadata di model dbt dengan cara mengubah fungsi select ke kolom yang dibutuhkan saja
 
