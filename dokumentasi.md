@@ -533,3 +533,336 @@ i = 2, col = 'Nominal', row[2] = '1000' -> 'Nominal': '1000'
 
 2. hapus kolom metadata di model dbt dengan cara mengubah fungsi select ke kolom yang dibutuhkan saja
 
+# Version 3 - mencoba memasukkan Sling
+## Melakukan setup
+### Instalasi
+```bash
+uv add dagster-sling
+```
+
+untuk membuat folder ```.sling/```, kita akan melakukan
+
+```bash
+sling init
+```
+
+Hal tersebut membuat directory file **tidak berubah**, maka menurut dokumentasi sling, kita harus menambahkan ```.sling/env.yml``` dan ```replication.yml``` sehingga bentuk directory file menjadi seperti berikut
+
+```
+.
+└── my-project
+   ├── pyproject.toml
+   ├── src
+   │   └── my_project
+   │       ├── __init__.py
+   │       ├── definitions.py
+   │       └── defs
+   │       |  └── __init__.py
+   |       └── assets
+   │       |  └── kos.py
+   ├── tests
+   │   └── __init__.py
+   └── uv.lock
+   ├── .dlt
+   │   └── config.toml
+   │   └── secrets.toml
+   ├── dlt_pipeline
+   │   └── kos_pipeline.py
+   ├── .sling                             <-- ditambahkan secara manual
+   │   └── env.yml                        <-- ditambahkan secara manual
+   ├── project_management
+   │   └── analyses
+   │   └── logs
+   │   └── macros
+   │   └── models
+   │        └── __sources.yml              <-- ditambahkan secara manual
+   │        └── schema.yml                 <-- ditambahkan secara manual
+   │        └── dim_properties.sql         <-- ditambahkan secara manual
+   │        └── dim_subscriptions.sql      <-- ditambahkan secara manual
+   │   └── seeds
+   │   └── snapshots
+   │   └── target
+   │   └── tests
+   │   └── .gitignore
+   │   └── dbt_project.yml
+   │   └── profiles.yml       <-- ditambahkan secara manual
+   ├── replication.yml        <-- ditambahkan secara manual
+```
+
+## Konfigurasi file env.yml dan replication.yml
+### env.yml
+Berikut hal yang perlu disetting dalam file ```env.yml```
+
+```yml
+rest_api_source:
+  type: rest_api
+  config:
+    url: "https://api.example.com/data"
+    method: GET
+    headers:
+      Authorization: "Bearer your_api_token"
+    pagination:
+      type: cursor
+      cursor_param: "page"
+      start_value: 1
+      page_size: 100
+      max_pages: 10
+
+
+snowflake_target:
+    type: snowflake
+    account: myaccount.region
+    user: myuser
+    password: mypassword
+    database: MANAJEMEN_KOS
+    schema: analytics
+    warehouse: compute_wh
+    role: myrole
+```
+notes = nantinya disesuaikan dengan kebutuhan
+
+### replication.yml
+Selanjutnya kita harus membuat ```replication.yml``` untuk setting connection sling.
+
+```yml
+replications:
+  - name: load_api_properties
+    source: ${rest_api_source_properties}
+    destination: ${snowflake_target}
+    load:
+      mode: replace
+      table: property_list_sling
+
+  - name: load_api_subscriptions
+    source: ${rest_api_source_subscriptions}
+    destination: ${snowflake_target}
+    load:
+      mode: replace
+      table: subscription_list_sling
+```
+
+## Melakukan replikasi
+```bash
+sling replicate --config replication.yml --env .sling/env.yml
+```
+
+Masalah yang dialami:
+1. Setelah melakukan perintah tersebut, proses berhasil tapi di snowflake tidak muncul apa-apa. Setelah dicari di dokumentasi resmi sling, sepertinya perintah yang benar adalah ```sling run -r /path/to/replication.yaml```
+2. Setelah dicek melalui ```sling conns list```, connestion yang sudah ditulis dalam ```env.yml``` tidak ada dan hanya menampilkan ini
+```
++-----------+-----------------+----------+
+| CONN NAME | CONN TYPE       | SOURCE   |
++-----------+-----------------+----------+
+| LOCAL     | FileSys - Local | built-in |
++-----------+-----------------+----------+
+```
+
+Solusi:
+1. Connection didaftarkan melalui CLI saja agar saat dilakukan replikasi, sling tidak bingung lagi dengan source dan destinationnya
+
+## Mendaftarkan connection secara manual melalui CLI
+### Percobaan pertama - snowflake dan REST API
+untuk snowflake:
+```bash
+export snowflake_target='snowflake://sling_user:MyP@ssw0rd@snowflake_account.region_id/MY_DB/MY_SCHEMA?warehouse=MY_WAREHOUSE&role=MY_ROLE'
+
+```
+
+untuk REST API:
+```bash
+export REST_API_PROPERTIES='restapi://api.example.com/v1/properties?page=1?method=GET&headers={"x-api-key":"abc123"}&json_path=data.data'
+```
+
+yang muncul ketika melakukan ```sling conns list```:
+```
++------------------+-----------------+--------------+
+| CONN NAME        | CONN TYPE       | SOURCE       |
++------------------+-----------------+--------------+
+| LOCAL            | FileSys - Local | built-in     |
+| SNOWFLAKE_TARGET | DB - Snowflake  | env variable |
++------------------+-----------------+--------------+
+```
+
+Masalah yang terjadi:
+1. Kenapa connection REST API-nya tidak terdaftar, padahal ketika dilakukan '''echo $rest_api_source_subscriptions''' variabel connection tersebur jelas ada?
+
+Solusi:
+1. Tes replicationnya langsung saja supaya memastikan apakah hal tersebut bermasalah atau tidak
+```bash
+sling run --src-conn rest_api_source_properties --tgt-conn snowflake_target --tgt-object analytics.property_list_sling --mode replace
+```
+
+dan muncul error
+```
+fatal:
+~ could not set task configuration
+could not find connection rest_api_source_properties
+```
+berarti memang koneksi REST API-nya tidak terdaftar
+
+2. Karena solusi diatas tidak berhasil, untuk sementara kita gunakan DuckDB dulu sebagai pengganti REST API sebagai source
+
+### Percobaan kedua - DuckDB
+#### Setting Variabel
+```bash
+export MY_DUCKDB='duckdb:///absolute/path/to/your_file.duckdb'
+```
+
+setelah melakukan export untuk koneksi ke ```properties.duckdb``` dan ```subscriptions.duckdb```, maka connection list akan berubah seperti ini
+
+```
++-------------------------+-----------------+--------------+
+| CONN NAME               | CONN TYPE       | SOURCE       |
++-------------------------+-----------------+--------------+
+| LOCAL                   | FileSys - Local | built-in     |
+| MY_DUCKDB_PROPERTIES    | DB - DuckDB     | env variable |
+| MY_DUCKDB_SUBSCRIPTIONS | DB - DuckDB     | env variable |
+| SNOWFLAKE_TARGET        | DB - Snowflake  | env variable |
++-------------------------+-----------------+--------------+
+```
+
+#### Mencoba replikasi
+```bash
+sling run --src-conn MY_DUCKDB_PROPERTIES --tgt-conn snowflake_target --tgt-object analytics.property_list_sling --mode replace
+```
+
+Masalah yang terjadi:
+1. error (karena belum setting source streamnya dan tidak ada mode replace, hanya full-refresh, incremental, backfill, snapshot or truncate)
+```
+fatal:
+~ could not parse stream table name
+invalid table name:
+```
+
+Solusi:
+1. Jangan lupa taruh source stream dan ubah modenya ke mode yang tersedia
+``` bash
+sling run   --src-conn MY_DUCKDB_PROPERTIES   --src-stream "property_list"   --tgt-conn SNOWFLAKE_TARGET   --tgt-object analytics.property_list_sling   --mode full-refresh
+```
+
+tebak apa yang terjadi? yak, error
+```
+tls: failed to verify certificate: x509: certificate is valid for *.prod3.us-west-2.snowflakecomputing.com, *.us-west-2.snowflakecomputing.com, *.global.snowflakecomputing.com, *.snowflakecomputing.com, *.prod3.us-west-2.aws.snowflakecomputing.com, not LPURCVA-BI18025.us-east-4.snowflakecomputing.com
+```
+karena certificatenya tidak valid untuk region snowflake akun yang digunakan
+
+2. Karena solusi diatas belum berjalan, kita deklarasikan ulang variabel connection ke snowflakenya untuk bisa bypass hal tersebut dari region ```us-east-4``` ke ```snowflakecomputing.com``` dan jalankan kembali perintah replikasi
+hasil: masih error
+```
+fatal:
+~ Could not get source columns
+did not find any columns for "main"."property_list". Perhaps it does not exists, or user does not have read permission.
+```
+kali ini error cukup jelas karena tabel property_list dalam duckdb ada di raw_properties.property_list
+3. ubah source stream menjadi ```raw_properties.property_list```
+hasil: berhasil
+```bash
+sling run   --src-conn MY_DUCKDB_PROPERTIES   --src-stream "raw_properties.property_list"   --tgt-conn SNOWFLAKE_TARGET   --tgt-object analytics.property_list_sling   --mode full-refresh
+3:22PM INF Sling CLI | https://slingdata.io
+3:22PM INF connecting to source database (duckdb)
+3:22PM INF connecting to target database (snowflake)
+3:22PM INF reading from source database
+3:22PM INF writing to target database [mode: full-refresh]
+3:22PM INF created table "ANALYTICS"."PROPERTY_LIST_SLING_TMP"
+3:22PM INF streaming data
+3:22PM INF created table "ANALYTICS"."PROPERTY_LIST_SLING"
+3:22PM INF inserted 6 rows into "ANALYTICS"."PROPERTY_LIST_SLING" in 24 secs [0 r/s] [1.5 kB]
+3:22PM INF execution succeeded
+```
+
+## Membuat asset di dagster
+Dibuat berdasarkan guide yang ditemukan di https://docs.dagster.io/integrations/libraries/sling#:~:text=Sling%20provides%20an%20easy-to-use%20YAML%20configuration%20layer%20for,derive%20Dagster%20assets%20from%20a%20replication%20configuration%20file.
+
+### Perbaiki replication.yml
+```yml
+replications:
+  - name: load_duckdb_properties
+    source: MY_DUCKDB_PROPERTIES
+    destination: SNOWFLAKE_TARGET
+    defaults:
+      mode: full-refresh
+      object: 'analytics.property_list_sling'
+    streams:
+      raw_properties.property_list:
+        object: 'analytics.property_list_sling'
+
+  - name: load_api_subscriptions
+    source: MY_DUCKDB_SUBSCRIPTIONS
+    destination: SNOWFLAKE_TARGET
+    defaults:
+      mode: full-refresh
+      object: 'analytics.subscription_list_sling'
+    streams:
+      raw_subscriptions.subscription_list:
+        object: 'analytics.subscription_list_sling'
+```
+
+selanjutnya kita coba run untuk memastikan konfigurasinya sudah benar
+
+Masalah yang ditemukan:
+1. Sling bingung mau jalanin replication yang mana
+2. di versi Sling yang sekarang (1.4.16) destination itu ga valid, pakeknya target
+
+Solusi:
+1. Masing-masing replication dipisah file ke ```replication_properties.yml``` dan ```replication_subscriptions.yml``` sehingga directory file sekarang menjadi
+
+```
+.
+└── my-project
+   ├── pyproject.toml
+   ├── src
+   │   └── my_project
+   │       ├── __init__.py
+   │       ├── definitions.py
+   │       └── defs
+   │       |  └── __init__.py
+   |       └── assets
+   │       |  └── kos.py
+   ├── tests
+   │   └── __init__.py
+   └── uv.lock
+   ├── .dlt
+   │   └── config.toml
+   │   └── secrets.toml
+   ├── dlt_pipeline
+   │   └── kos_pipeline.py
+   ├── .sling                             <-- ditambahkan secara manual
+   │   └── env.yml                        <-- ditambahkan secara manual
+   ├── project_management
+   │   └── analyses
+   │   └── logs
+   │   └── macros
+   │   └── models
+   │        └── __sources.yml              <-- ditambahkan secara manual
+   │        └── schema.yml                 <-- ditambahkan secara manual
+   │        └── dim_properties.sql         <-- ditambahkan secara manual
+   │        └── dim_subscriptions.sql      <-- ditambahkan secara manual
+   │   └── seeds
+   │   └── snapshots
+   │   └── target
+   │   └── tests
+   │   └── .gitignore
+   │   └── dbt_project.yml
+   │   └── profiles.yml       <-- ditambahkan secara manual
+   ├── replication_properties.yml        <-- ditambahkan secara manual
+   ├── replication_subscriptions.yml     <-- ditambahkan secara manual
+   
+```
+
+2. Destination di file .yml diganti jd target sehingga file ```replication_properties.yml``` menjadi
+
+```yml
+source: MY_DUCKDB_PROPERTIES
+target: SNOWFLAKE_TARGET
+defaults:
+  mode: full-refresh
+  object: 'analytics.property_list_sling'
+streams:
+  raw_properties.property_list:
+    object: 'analytics.property_list_sling'
+```
+
+Hasil: ketika dilakukan ```sling run -r replication_properties.yml``` data duckdb berhasil tersalin ke snowflake
+
+### Jadikan resources di dagster
+Karena dagster tidak dapat membaca replication.yml, seluruh koneksi harus didefinisikan ulang dalam resources di dagster.
