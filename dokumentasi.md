@@ -815,9 +815,9 @@ Solusi:
    │       ├── __init__.py
    │       ├── definitions.py
    │       └── defs
-   │       |  └── __init__.py
-   |       └── assets
-   │       |  └── kos.py
+   │          └── __init__.py
+   |          └── assets
+   │            └── kos.py
    ├── tests
    │   └── __init__.py
    └── uv.lock
@@ -968,11 +968,11 @@ directory file akhir:
    │       ├── __init__.py
    │       ├── definitions.py
    │       └── defs
-   │       |  └── __init__.py
-   |       └── assets
-   │       |  └── kos.py
-   │       |  └── **dbt.py**                  <-- ditambahkan secara manual
-   │       |  └── **sling_asset.py**          <-- ditambahkan secara manual
+   │          └── __init__.py
+   |          └── assets
+   │            └── kos.py
+   │            └── **dbt.py**                  <-- ditambahkan secara manual
+   │            └── **sling_asset.py**          <-- ditambahkan secara manual
    ├── tests
    │   └── __init__.py
    └── uv.lock
@@ -1009,6 +1009,7 @@ directory file akhir:
 
 # Version 4 - menambahkan job
 ## Membuat file jobs.py di dalam src
+
 ```
 .
 └── my-project
@@ -1017,13 +1018,14 @@ directory file akhir:
    │   └── my_project
    │       ├── __init__.py
    │       ├── definitions.py
-   │       ├── **jobs.py**                <-- ditambahkan secara manual
    │       └── defs
-   │       |  └── __init__.py
-   |       └── assets
-   │       |  └── kos.py
-   │       |  └── dbt.py                  <-- ditambahkan secara manual
-   │       |  └── sling_asset.py          <-- ditambahkan secara manual
+   │          └── __init__.py
+   │          └── jobs.py                 <-- ditambahkan secara manual
+   │          └── resources.py            <-- ditambahkan secara manual
+   │          └── assets
+   │             └── kos.py
+   │             └── dbt.py                  <-- ditambahkan secara manual
+   │             └── sling_asset.py          <-- ditambahkan secara manual
    ├── tests
    │   └── __init__.py
    └── uv.lock
@@ -1085,3 +1087,169 @@ dlt_assets_job_property = define_asset_job(
     selection=dlt_jobs_property,
 )
 ```
+
+## Menambahkan partition dan schedule
+Pada tahap ini, kita akan melihat perbedaan job yang memiliki partition dan tidak. Maka dari itu, job ```dlt_assets_job_property``` akan kita tambahkan partition dan schedule, sementara ```dlt_assets_job_subscription``` kita biarkan terlebih dahulu untuk kita bandingkan. Kedua job tersebut dipilih karena alur kerjanya yang sangat mirip sehingga membantu dalam memahami perbedaan yang terjadi.
+
+### Menambahkan cron schedule
+Hal yang pertama harus dilakukan adalah dengan membuat file baru bernama ```schedules.py``` yang terletak di dalam folder defs. Sehingga directory barunya akan berbentuk seperti ini
+
+```
+.
+└── my-project
+   ├── pyproject.toml
+   ├── src
+   │   └── my_project
+   │       ├── __init__.py
+   │       ├── definitions.py
+   │       └── defs
+   │          └── __init__.py
+   │          └── jobs.py                 <-- ditambahkan secara manual
+   │          └── resources.py            <-- ditambahkan secara manual
+   │          └── schedules.py            <-- ditambahkan secara manual
+   │          └── assets
+   │             └── kos.py
+   │             └── dbt.py                  <-- ditambahkan secara manual
+   │             └── sling_asset.py          <-- ditambahkan secara manual
+   ├── tests
+   │   └── __init__.py
+   └── uv.lock
+   ├── .dlt
+   │   └── config.toml
+   │   └── secrets.toml
+   ├── dlt_pipeline
+   │   └── kos_pipeline.py
+   ├── .sling                             <-- ditambahkan secara manual
+   │   └── env.yml                        <-- ditambahkan secara manual
+   ├── project_management
+   │   └── analyses
+   │   └── logs
+   │   └── macros
+   │   └── models
+   │        └── __sources.yml              <-- ditambahkan secara manual
+   │        └── schema.yml                 <-- ditambahkan secara manual
+   │        └── dim_properties.sql         <-- ditambahkan secara manual
+   │        └── dim_subscriptions.sql      <-- ditambahkan secara manual
+   │        └── dim_properties_sling.sql      <-- ditambahkan secara manual
+   │        └── dim_subscriptions_sling.sql   <-- ditambahkan secara manual
+   │   └── seeds
+   │   └── snapshots
+   │   └── target
+   │   └── tests
+   │   └── .gitignore
+   │   └── dbt_project.yml
+   │   └── profiles.yml       <-- ditambahkan secara manual
+   ├── replication_properties.yml        <-- ditambahkan secara manual
+   ├── replication_subscriptions.yml     <-- ditambahkan secara manual
+   
+```
+dalam file schedules.py, kita tambahkan kode untuk mendefinisikan schedule yang akan digunakan
+
+```py
+import dagster as dg
+from my_project.defs.jobs import dlt_assets_job_property
+
+property_update_schedule = dg.ScheduleDefinition(
+    job=dlt_assets_job_property,
+    cron_schedule="*/30 * * * *",
+)
+```
+
+Schedule tersebut akan menjalankan job setiap 30 menit sekali.
+
+### Menambahkan partition
+Membuat file ```partitions.py``` di dalam folder defs
+
+
+```
+.
+└── my-project
+   ├── pyproject.toml
+   ├── src
+   │   └── my_project
+   │       ├── __init__.py
+   │       ├── definitions.py
+   │       └── defs
+   │          └── __init__.py
+   │          └── jobs.py                 <-- ditambahkan secara manual
+   │          └── resources.py            <-- ditambahkan secara manual
+   │          └── schedules.py            <-- ditambahkan secara manual
+   │          └── partitions.py           <-- ditambahkan secara manual
+   │          └── assets
+   │             └── kos.py
+   │             └── dbt.py                  <-- ditambahkan secara manual
+   │             └── sling_asset.py          <-- ditambahkan secara manual
+   ├── tests
+   │   └── __init__.py
+   └── uv.lock
+   ├── .dlt
+   │   └── config.toml
+   │   └── secrets.toml
+   ├── dlt_pipeline
+   │   └── kos_pipeline.py
+   ├── .sling                             <-- ditambahkan secara manual
+   │   └── env.yml                        <-- ditambahkan secara manual
+   ├── project_management
+   │   └── analyses
+   │   └── logs
+   │   └── macros
+   │   └── models
+   │        └── __sources.yml              <-- ditambahkan secara manual
+   │        └── schema.yml                 <-- ditambahkan secara manual
+   │        └── dim_properties.sql         <-- ditambahkan secara manual
+   │        └── dim_subscriptions.sql      <-- ditambahkan secara manual
+   │        └── dim_properties_sling.sql      <-- ditambahkan secara manual
+   │        └── dim_subscriptions_sling.sql   <-- ditambahkan secara manual
+   │   └── seeds
+   │   └── snapshots
+   │   └── target
+   │   └── tests
+   │   └── .gitignore
+   │   └── dbt_project.yml
+   │   └── profiles.yml       <-- ditambahkan secara manual
+   ├── replication_properties.yml        <-- ditambahkan secara manual
+   ├── replication_subscriptions.yml     <-- ditambahkan secara manual
+   
+```
+
+lalu dalam ```partitions.py``` tambahkan kode untuk mendeklarasikan start_date dan end_date untuk partition yang ingin digunakan. Misalnya pada kasus ini, kita ingin menggunakan Monthly Partition
+
+```py
+import dagster as dg
+
+start_date = "2025-04-05"
+end_date = "2025-10-05"
+
+monthly_partition = dg.MonthlyPartitionsDefinition(
+    start_date=start_date,
+    end_date=end_date
+)
+```
+Setelah itu, kaitkan partition yang telah dibuat dengan job
+
+```py
+dlt_assets_job_property = define_asset_job(
+    name="dlt_assets_job_property",
+    partitions_def=monthly_partition,
+    selection=dlt_jobs_property,
+)
+```
+
+Masalah yang terjadi:
+1. Tidak ada perubahan apapun di UI
+
+Solusi:
+1. Cek apabila partition bekerja di asset
+```py
+@dg.asset( 
+    partitions_def=monthly_partition
+)
+def run_property_list_asset(context: dg.AssetExecutionContext):
+    partition_date_str = context.partition_key
+    month_to_fetch = partition_date_str[:-3]
+    print("Running DLT pipeline for properties")
+    run_properties_pipeline(month_to_fetch)
+```
+
+Kesimpulan:
+1. Kalau partition disangkutkan pada job, tidak akan muncul apapun di UI
