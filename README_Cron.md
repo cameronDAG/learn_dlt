@@ -10,7 +10,7 @@ minute hour day month weekday <command-to-execute>
 ```
 
 ### Contoh
-1. jalan setiap hari, setiap bulan, setiap jam 5
+1. jalan setiap hari, setiap bulan, setiap jam 3
 ```
 15 * * * * command
 ```
