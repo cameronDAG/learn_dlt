@@ -1246,10 +1246,13 @@ Solusi:
 )
 def run_property_list_asset(context: dg.AssetExecutionContext):
     partition_date_str = context.partition_key
-    month_to_fetch = partition_date_str[:-3]
+    month_to_fetch = partition_date_str
     print("Running DLT pipeline for properties")
     run_properties_pipeline(month_to_fetch)
 ```
 
 Kesimpulan:
 1. Kalau partition disangkutkan pada job, tidak akan muncul apapun di UI
+
+### Mencoba materialisasi di Dagster UI
+pada saat ```run_property_list_asset``` dijalankan, hasilnya error. Hal ini sudah diduga akan terjadi karena source dlt yang sudah kita definisikan sebenarnya tidak memiliki parameter date yang bisa diolah dengan partisi. Oleh karena itu, asset kita kembalikan seperti semula terlebih dahulu. Nantinya kita akan mendefinisikan resource atau asset lain yang bisa kita uji coba untuk partisi.
