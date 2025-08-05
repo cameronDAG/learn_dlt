@@ -865,4 +865,223 @@ streams:
 Hasil: ketika dilakukan ```sling run -r replication_properties.yml``` data duckdb berhasil tersalin ke snowflake
 
 ### Jadikan resources di dagster
-Karena dagster tidak dapat membaca replication.yml, seluruh koneksi harus didefinisikan ulang dalam resources di dagster.
+Karena dagster tidak dapat membaca replication.yml, seluruh koneksi harus didefinisikan ulang dalam resources di dagster dengan konfigurasi yang disimpan pada file ```.env```
+
+```py
+from dagster_sling import SlingConnectionResource, SlingResource
+
+sling_resource = SlingResource(
+    connections=[
+        # Using a hard-coded connection string
+        SlingConnectionResource(
+            name="MY_DUCKDB_PROPERTIES",
+            type="duckdb",
+            connection_string="duckdb:///home/cammy/my-project/properties.duckdb",
+        ),
+        SlingConnectionResource(
+            name="MY_DUCKDB_SUBSCRIPTIONS",
+            type="duckdb",
+            connection_string="duckdb:///home/cammy/my-project/subscriptions.duckdb",
+        ),
+        # Using a keyword-argument constructor
+        SlingConnectionResource(
+            name="SNOWFLAKE_TARGET",
+            type="snowflake",
+            host=EnvVar("SNOWFLAKE_HOST"),
+            user=EnvVar("SNOWFLAKE_USER"),
+            password=EnvVar("SNOWFLAKE_PASSWORD"),
+            database=EnvVar("SNOWFLAKE_DATABASE"),
+            schema=EnvVar("SNOWFLAKE_SCHEMA"),
+            warehouse=EnvVar("SNOWFLAKE_WAREHOUSE"),
+            role="ACCOUNTADMIN",
+        ),
+    ]
+)
+```
+
+### Jadikan sebagai assets di dagster
+```py
+@sling_assets(replication_config=replication_config_properties)
+def run_property_list_sling_asset(context, sling: SlingResource):
+    yield from sling.replicate(context=context)
+    for row in sling.stream_raw_logs():
+        context.log.info(row)
+```
+
+Setelah itu, jangan lupa define resources dan assetnya di definition seperti yang kita lakukan terhadap dbt dulu
+
+```py
+defs = Definitions(
+    assets=[
+        run_property_list_sling_asset,
+        run_subscription_list_sling_asset,
+    ],  
+    resources={
+        "sling": sling_resource,
+    },
+)
+```
+
+Setelah dilakukan reload definition pada dagster dev, hasilnya akan muncul 2 pasang asset yang namanya tidak sama dengan asset yang kita buat (bukan run_property_list_sling_asset, melainkan property_list dan property_list_sling). Hal ini disebabkan dagster mendefinisikan asset berdasarkan file replication.yml dan melihat ke bagian streamnya.
+```yml
+source: MY_DUCKDB_PROPERTIES
+target: SNOWFLAKE_TARGET
+defaults:
+  mode: full-refresh
+  object: 'analytics.property_list_sling'
+streams:
+  raw_properties.property_list:
+    object: 'analytics.property_list_sling'
+```
+
+Bisa dilihat nama tabelnya sesuai dengan nama asset.
+
+### Membuat dbt models
+caranya sama seperti pada [tutorial](#membuat-dbt-models)
+
+Masalah yang terjadi:
+1. Ingat bagaimana cara kita menggunakan dbt dagster translator untuk menyambungkan dependency antara model dbt dengan asset dagster? Di model yang terbaru (dim_properties_sling dan dim_subscriptions_sling) memiliki dependencies terhadap asset run_property_list_sling_asset dan run_subscription-list_sling_asset padahal seperti yang dijelaskan dalam bagian sebelumnya, itu bukan asset yang dibuat oleh sling, karena sling membuat asset berdasarkan stream.
+
+Solusi:
+1. Modifikasi dbt dagster translator
+```py
+class CustomizedDagsterDbtTranslator(DagsterDbtTranslator):
+    def get_asset_key(self, dbt_resource_props):
+        resource_type = dbt_resource_props["resource_type"]
+        name = dbt_resource_props["name"]
+        if resource_type == "source":
+            if name == "property_list_sling" or name == "subscription_list_sling":
+                return dg.AssetKey(f"{name}")
+            else:
+                return dg.AssetKey(f"run_{name}_asset")
+        else:
+            return super().get_asset_key(dbt_resource_props)
+```
+directory file akhir:
+
+```
+.
+└── my-project
+   ├── pyproject.toml
+   ├── src
+   │   └── my_project
+   │       ├── __init__.py
+   │       ├── definitions.py
+   │       └── defs
+   │       |  └── __init__.py
+   |       └── assets
+   │       |  └── kos.py
+   │       |  └── **dbt.py**                  <-- ditambahkan secara manual
+   │       |  └── **sling_asset.py**          <-- ditambahkan secara manual
+   ├── tests
+   │   └── __init__.py
+   └── uv.lock
+   ├── .dlt
+   │   └── config.toml
+   │   └── secrets.toml
+   ├── dlt_pipeline
+   │   └── kos_pipeline.py
+   ├── .sling                             <-- ditambahkan secara manual
+   │   └── env.yml                        <-- ditambahkan secara manual
+   ├── project_management
+   │   └── analyses
+   │   └── logs
+   │   └── macros
+   │   └── models
+   │        └── __sources.yml              <-- ditambahkan secara manual
+   │        └── schema.yml                 <-- ditambahkan secara manual
+   │        └── dim_properties.sql         <-- ditambahkan secara manual
+   │        └── dim_subscriptions.sql      <-- ditambahkan secara manual
+   │        └── **dim_properties_sling.sql**      <-- ditambahkan secara manual
+   │        └── **dim_subscriptions_sling.sql**   <-- ditambahkan secara manual
+   │   └── seeds
+   │   └── snapshots
+   │   └── target
+   │   └── tests
+   │   └── .gitignore
+   │   └── dbt_project.yml
+   │   └── profiles.yml       <-- ditambahkan secara manual
+   ├── replication_properties.yml        <-- ditambahkan secara manual
+   ├── replication_subscriptions.yml     <-- ditambahkan secara manual
+   
+```
+
+
+# Version 4 - menambahkan job
+## Membuat file jobs.py di dalam src
+```
+.
+└── my-project
+   ├── pyproject.toml
+   ├── src
+   │   └── my_project
+   │       ├── __init__.py
+   │       ├── definitions.py
+   │       ├── **jobs.py**                <-- ditambahkan secara manual
+   │       └── defs
+   │       |  └── __init__.py
+   |       └── assets
+   │       |  └── kos.py
+   │       |  └── dbt.py                  <-- ditambahkan secara manual
+   │       |  └── sling_asset.py          <-- ditambahkan secara manual
+   ├── tests
+   │   └── __init__.py
+   └── uv.lock
+   ├── .dlt
+   │   └── config.toml
+   │   └── secrets.toml
+   ├── dlt_pipeline
+   │   └── kos_pipeline.py
+   ├── .sling                             <-- ditambahkan secara manual
+   │   └── env.yml                        <-- ditambahkan secara manual
+   ├── project_management
+   │   └── analyses
+   │   └── logs
+   │   └── macros
+   │   └── models
+   │        └── __sources.yml              <-- ditambahkan secara manual
+   │        └── schema.yml                 <-- ditambahkan secara manual
+   │        └── dim_properties.sql         <-- ditambahkan secara manual
+   │        └── dim_subscriptions.sql      <-- ditambahkan secara manual
+   │        └── dim_properties_sling.sql      <-- ditambahkan secara manual
+   │        └── dim_subscriptions_sling.sql   <-- ditambahkan secara manual
+   │   └── seeds
+   │   └── snapshots
+   │   └── target
+   │   └── tests
+   │   └── .gitignore
+   │   └── dbt_project.yml
+   │   └── profiles.yml       <-- ditambahkan secara manual
+   ├── replication_properties.yml        <-- ditambahkan secara manual
+   ├── replication_subscriptions.yml     <-- ditambahkan secara manual
+   
+```
+
+Mendeklarasikan job
+```py
+dlt_jobs_property = dg.AssetSelection.assets[
+        "run_property_list_asset",
+        "dim_properties",
+    ]
+
+dlt_assets_job_property = define_asset_job(
+    name="dlt_assets_job_property",
+    selection=dlt_jobs_property,
+)
+```
+
+Masalah yang terjadi:
+1. Error karena dagster tidak mengenali asset run_property_list_asset padahal sudah ada di dalam dagster. Ternyata saat membuat jobs, tidak perlu mendeklarasikan upstream dependency-nya
+
+2. Hapus asset upstream dependency
+```py
+dlt_jobs_property = dg.AssetSelection.assets[
+        # "run_property_list_asset",
+        "dim_properties",
+    ]
+
+dlt_assets_job_property = define_asset_job(
+    name="dlt_assets_job_property",
+    selection=dlt_jobs_property,
+)
+```
