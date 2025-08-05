@@ -12,7 +12,7 @@ minute hour day month weekday <command-to-execute>
 ### Contoh
 1. jalan setiap hari, setiap bulan, setiap jam 3
 ```
-15 * * * * command
+* 15 * * * command
 ```
 
 2. jalan setiap jam 5.30pm di hari jumat
