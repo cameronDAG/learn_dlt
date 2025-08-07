@@ -61,7 +61,7 @@ pymysql
 2. Service Account (Kalau mau melakukan Extract dan Load dari Google Drive/Sheets)
     - Buat akun di https://console.cloud.google.com/
     - Buat project baru
-    - Aktifkan API yang dibutuhkan
+    - Aktifkan API yang dibutuhkan (Google Sheets API)
     - Buat service account baru
     - Dapatkan service_account.json pada tab Key, create new key, json
     - Masukkan file .json tersebut ke dalam directory project
