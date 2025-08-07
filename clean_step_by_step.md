@@ -227,7 +227,7 @@ Penjelasan logika:
         dataset_name="raw_properties"
     )
 ```
-Setelah dijalankan, di dalam snowflake akan terbentuk schema baru bernama raw_properties. Sama seperti dataser_name
+Setelah dijalankan, di dalam snowflake akan terbentuk schema baru bernama raw_properties. Sama seperti dataset_name
 
 #### MySQL -> Snowflake
 Pada proses extract dan load yang satu ini, tidak digunakan decorator @resource. Metode yang digunakan mengikuti dokumentasi dari DLTHub yang bisa diakses di https://dlthub.com/docs/pipelines/sql_database_mysql/load-data-with-python-from-sql_database_mysql-to-snowflake
