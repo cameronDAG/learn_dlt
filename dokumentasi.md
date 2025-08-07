@@ -1256,3 +1256,183 @@ Kesimpulan:
 
 ### Mencoba materialisasi di Dagster UI
 pada saat ```run_property_list_asset``` dijalankan, hasilnya error. Hal ini sudah diduga akan terjadi karena source dlt yang sudah kita definisikan sebenarnya tidak memiliki parameter date yang bisa diolah dengan partisi. Oleh karena itu, asset kita kembalikan seperti semula terlebih dahulu. Nantinya kita akan mendefinisikan resource atau asset lain yang bisa kita uji coba untuk partisi.
+
+# Version 5 - Pipeline mysql + partisi
+## Melakukan setting konfigurasi connection mysql ke sling
+```bash
+export MYSQL='mysql://myuser:mypass@host.ip:3306/mydatabase?tls=skip-verify'
+```
+Notes = nantinya disesuaikan dengan kebutuhan saja.
+
+### Testing connection
+Selanjutnya, dalam database sudah disediakan sebuah data dummy yang hanya bertujuan untuk melakukan connection testing
+
+```bash
+sling run \
+  --src-conn MYSQL \
+  --src-stream "SELECT * FROM buat_testing" \
+  --stdout
+10:27AM INF Sling CLI | https://slingdata.io
+10:27AM INF connecting to source database (mysql)
+10:27AM INF reading from source database
+10:27AM INF writing to target stream (stdout)
+kalimat
+hai
+```
+
+dari hasil tersebut, dapat dikatakan bahwa MySQL sudah terkoneksi dengan baik.
+
+### Mendatakannya sebagai resource di dagster
+```py
+SlingConnectionResource(
+            name="MY_SQL",
+            type="mysql",
+            host=EnvVar("MYSQL_HOST"),
+            user=EnvVar("MYSQL_USER"),
+            password=EnvVar("MYSQL_PASSWORD"),
+            database=EnvVar("MYSQL_DATABASE"),
+        )
+```
+### Membuat file .yml untuk konfigurasi replicationnya ke snowflake
+```yml
+source: MY_SQL
+target: SNOWFLAKE_TARGET
+defaults:
+  mode: backfill
+  object: 'analytics.property_list_mysql'
+streams:
+  property_management.property_list:
+    query: |
+      SELECT * FROM property_management.property_list
+      WHERE DATE(created_at) = '{{ partition_date }}'
+    object: 'analytics.property_list_mysql'
+```
+
+### Membuat sling-dagster asset
+```py
+@sling_assets(
+    replication_config=replication_config_mysql_properties,
+    partitions_def=daily_partition
+)
+def run_property_list_mysql_asset(context, sling: SlingResource):
+    partition_date = context.partition_key
+
+    yield from sling.replicate(context=context, env={"partition_date": partition_date})
+
+    for row in sling.stream_raw_logs():
+        context.log.info(row)
+
+```
+
+Masalah yang terjadi:
+1. Ketika dilakukan materialisasi, terdapat error ```TypeError: SlingResource.replicate() got an unexpected keyword argument 'env'```
+2. Modes backfill membutuhkan primary_key, update_key, dan range
+
+Solusi:
+1. Berdasarkan solusi yang diberikan oleh dokumentasi dagster, dagster AI, berikut cara penulisan asset sling dengan partition yang benar
+
+```py
+@sling_assets(
+    replication_config=replication_config_mysql_properties,
+    partitions_def=daily_partition
+)
+def run_property_list_mysql_asset(context, sling: SlingResource):
+    partition_date = context.partition_key
+    os.environ['START_DATE'] = partition_date
+    os.environ['END_DATE'] = partition_date
+
+    yield from sling.replicate(context=context)
+
+    for row in sling.stream_raw_logs():
+        context.log.info(row)
+```
+
+2. Memperbaiki file replication.yml
+```yml
+source: MY_SQL
+target: SNOWFLAKE_TARGET
+defaults:
+  mode: backfill
+  object: 'analytics.property_list_mysql'
+  
+
+streams:
+  property_management.property_list_mysql:
+    object: 'analytics.property_list_mysql'
+    primary_key: id
+    update_key: created_date
+    source_options:
+      range: ${START_DATE},${END_DATE}
+ 
+```
+
+### Mencoba materialize asset
+ketika mencoba materialize, berikut masalah yang terjadi:
+1. SQL Error for:
+select * from `property_management`.`property_list_mysql` where (`created_date` >= '${START_DATE}' and `created_date` <= '${END_DATE}')
+Error 1525 (HY000): Incorrect DATETIME value: '${START_DATE}'
+
+START_DATE dan END_DATE masih berbentuk literal string
+
+Solusi:
+1. Belum ada, issuenya memang masih open di github https://github.com/dagster-io/dagster/issues/24234
+
+# Version 6 - Mencoba dlt sebagai database replication tools dan partition
+## Mencoba melakukan loading seluruh isi database mysql ke dalam snowflake
+```py
+def load_entire_database() -> None:
+    """Use the sql_database source to completely load all tables in a database"""
+    pipeline = dlt.pipeline(
+         pipeline_name="sql_properties", destination='snowflake', dataset_name="sql_properties_mysql"
+    )
+
+    # By default the sql_database source reflects all tables in the schema
+    # The database credentials are sourced from the `.dlt/secrets.toml` configuration
+    source = sql_database()
+
+    # Run the pipeline. For a large db this may take a while
+    info = pipeline.run(source, write_disposition="replace")
+    print(
+        humanize.precisedelta(
+            pipeline.last_trace.finished_at - pipeline.last_trace.started_at
+        )
+    )
+    print(info)
+```
+
+loading berhasil dilakukan menggunakan kode tersebut
+
+## Membuat pipeline lain untuk melakukan update pada kolom + partisi
+```py
+def load_standalone_table_resource(filter_date) -> None:
+    """Load a few known tables with the standalone sql_table resource, request full schema and deferred
+    table reflection"""
+    pipeline = dlt.pipeline(
+        pipeline_name="sql_properties",
+        destination='snowflake',
+        dataset_name="sql_properties_mysql",
+    )
+    
+    def query_adapter_callback(query, table):
+        if table.name == "property_list_mysql":
+            # Only select rows where the column customer_id has value 1
+            return query.where(
+            func.DATE(table.c.created_date) == filter_date
+            )
+        # Use the original query for other tables
+        return query
+
+
+    property_list_mysql = sql_database(
+        query_adapter_callback=query_adapter_callback
+    ).with_resources("property_list_mysql")
+
+    # Run the resources together
+    info = pipeline.run(property_list_mysql, write_disposition="replace")
+    print(info)
+    # Show inferred columns
+    # print(pipeline.default_schema.to_pretty_yaml())
+
+```
+
+untuk assetnya sendiri, sebenarnya tinggal mengikuti instruksi version sebelumnya saja karena sudah berkali-kali kita buat juga.
