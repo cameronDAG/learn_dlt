@@ -234,7 +234,73 @@ Pada proses extract dan load yang satu ini, tidak digunakan decorator @resource.
 
 Step:
 1. Membuat function untuk replikasi keseluruhan database MySQL ke dalam Snowflake (lihat function load_entire_database() dalam dokumentasi)
+```py
+def load_entire_database() -> None:
+    """Use the sql_database source to completely load all tables in a database"""
+    pipeline = dlt.pipeline(
+         pipeline_name="sql_properties", destination='snowflake', dataset_name="sql_properties_mysql"
+    )
+
+    # By default the sql_database source reflects all tables in the schema
+    # The database credentials are sourced from the `.dlt/secrets.toml` configuration
+    source = sql_database()
+
+    # Run the pipeline. For a large db this may take a while
+    info = pipeline.run(source, write_disposition="replace")
+    print(
+        humanize.precisedelta(
+            pipeline.last_trace.finished_at - pipeline.last_trace.started_at
+        )
+    )
+    print(info)
+```
+![Schema yang terbentuk di snowflake setelah pipeline dijalankan](sql_properties_mysql.png)
+
 2. Membuat function untuk melakukan update ke salah satu tabel yang sudah terdapat dalam schema snowflake (lihat function load_standalone_table_resource() dalam dokumentasi. Namun perlu diingatkan bahwa ada beberapa modifikasi yang dilakukan agar function bisa terintregasi dengan partition dagster)
+
+Template awal:
+```py
+def load_standalone_table_resource() -> None:
+    """Load a few known tables with the standalone sql_table resource, request full schema and deferred
+    table reflection"""
+    pipeline = dlt.pipeline(
+        pipeline_name="rfam_database",
+        destination='snowflake',
+        dataset_name="rfam_data",
+        full_refresh=True,
+    )
+
+    # Load a table incrementally starting at a given date
+    # Adding incremental via argument like this makes extraction more efficient
+    # as only rows newer than the start date are fetched from the table
+    # we also use `detect_precision_hints` to get detailed column schema
+    # and defer_table_reflect to reflect schema only during execution
+    family = sql_table(
+        credentials="mysql+pymysql://rfamro@mysql-rfam-public.ebi.ac.uk:4497/Rfam",
+        table="family",
+        incremental=dlt.sources.incremental(
+            "updated",
+        ),
+        detect_precision_hints=True,
+        defer_table_reflect=True,
+    )
+    # columns will be empty here due to defer_table_reflect set to True
+    print(family.compute_table_schema())
+
+    # Load all data from another table
+    genome = sql_table(
+        credentials="mysql+pymysql://rfamro@mysql-rfam-public.ebi.ac.uk:4497/Rfam",
+        table="genome",
+        detect_precision_hints=True,
+        defer_table_reflect=True,
+    )
+
+    # Run the resources together
+    info = pipeline.extract([family, genome], write_disposition="merge")
+    print(info)
+```
+
+hal yang ditambahkan adalah fitur untuk melakukan filtering where berdasarkan kolom created_at seperti dibawah
 ```py
     def query_adapter_callback(query, table):
         if table.name == "property_list_mysql":
@@ -323,8 +389,40 @@ Notes:
 - end_date tidak wajib didefinisikan
 - Karena perbedaan timezone, kalau mau mendefinisikan end_date pastikan sudah lewat 1 hari dari tanggal hari ini (h+1). Karena kalau tidak, partition di hari ini masih belum tersedia untuk dijalankan
 
+![Asset di dagster UI dengan dan tanpa partition](partition_on_assets.png)
+
+![Pilihan mau maenjalankan partition yang mana](partition_selection.png)
+
 ### Jobs dan Schedules
-soon
+#### Jobs
+```py
+dlt_jobs_property = dg.AssetSelection.assets([
+        "run_property_list_asset_mysql",
+    ])
+```
+
+Untuk memasangkan suatu asset dengan schedule atau sensor, hal pertama yang kita lakukan adalah mendeklarasikan job yang menampung asset-asset tersebut.
+
+#### Schedules
+Normalnya, schedule tanpa partition akan dideklarasikan seperti ini
+```py
+property_update_schedule = dg.ScheduleDefinition(
+    job=dlt_assets_job_property,
+    cron_schedule="*/30 * * * *",
+)
+```
+
+Tapi apabila kita ingin menggunakan partition, job hanya akan dijalankan tanpa tau harus menjalankan partition yang mana. Oleh karena itu, menggunakan library dagster, kita dapat memanggil fungsi build_schedule_from_partitioned_job
+```py
+asset_partitioned_schedule = dg.build_schedule_from_partitioned_job(
+    dlt_assets_job_property, hour_of_day=3, minute_of_hour=35
+)
+```
+
+Job tersebut akan secara otomatis menjalankan partition terakhir di jam 03.35 UTC (10.35 WIB, disetting jam segitu untuk coba testing tadi).
+
+Misalnya hari ini tanggal 8 Agustus 2025, maka pada jam 10.35 WIB hari ini job akan menjalankan partition data tanggal 7 Agustus 2025
+![Run jobs yang telah terotomatisasi di tanggal 8 Agustus 2025](scheduling.png)
 
 ## Transform menggunakan DBT
 Untuk saat ini, models yang tersedia masih hanya untuk metode API -> Snowflake saja.
@@ -396,7 +494,7 @@ Penjelasan alur kode:
 2. Apabila source yang dicari sudah ditemukan, maka source tersebut dihubungkan dengan asset DLT.
 
 Ketika asset termaterialisasi akan terbentuk view dengan nama yang sama dengan nama models (karena materialization type yang disetting memang views)
-
+![Hasil dari materialisasi asset model DBT](DBT_result.png)
 
 # TL;DR alur kerja
 1. Ambil data menggunakan DLT (bisa API->Snowflake atau MySQL->Snowflake)
