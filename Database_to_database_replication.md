@@ -342,9 +342,6 @@ def load_standalone_table_resource(filter_date) -> None:
     info = pipeline.run(property_list_mysql, write_disposition="replace")
     print(info)
 ```
-### Kenapa menggunakan Partition?
-1. Tanpa partition: Semua data harus diload sekaligus. Berat dan rentan error
-2. Dengan partition: Loading data dapat dibagi berdasarkan kolom tertentu (pada kasus ini data dibagi berdasarkan kolom created_date), akan berguna untuk melakukan appending dan retry apabila salah satu partitionnya error
 
 ## Data orchestration menggunakan Dagster (Bagian asset untuk DLT)
 ### Asset
@@ -391,11 +388,7 @@ Notes:
 - end_date tidak wajib didefinisikan
 - Karena perbedaan timezone, kalau mau mendefinisikan end_date pastikan sudah lewat 1 hari dari tanggal hari ini (h+1). Karena kalau tidak, partition di hari ini masih belum tersedia untuk dijalankan
 
-##### Asset di dagster UI dengan dan tanpa partition
-![Asset di dagster UI dengan dan tanpa partition](partition_on_assets.png)
 
-##### Pilihan mau menjalankan partition yang mana
-![Pilihan mau menjalankan partition yang mana](partition_selection.png)
 
 ### Jobs dan Schedules
 #### Jobs
@@ -505,5 +498,21 @@ Ketika asset termaterialisasi akan terbentuk view dengan nama yang sama dengan n
 
 # TL;DR alur kerja
 1. Ambil data menggunakan DLT (bisa API->Snowflake atau MySQL->Snowflake)
-2. Setting Partition di DLT dan Dagster kalau perlu
+2. Setting Partition, Schedule di DLT dan Dagster kalau perlu
 3. Ambil data yang sudah disimpan dari Snowflake untuk ditransformasi oleh DBT
+
+# FAQ
+## Judulnya database to database replication tapi kok nggak pake Sling aja buat proses Extract dan Loadnya?
+Ya, Sling sendiri memang sebuah dat integration tools dan berfokus dalam replikasi database. Kalau dilihat di [dokumentasi](dokumentasi.md), untuk project ini sempat kita tambahkan Sling untuk proses replikasi database. Tetapi **Sling masih tidak bisa mengintegrasikan partition dalam Dagster**. Per-tanggal 8 Agustus 2025 issue tersebut masih memiliki status open di github https://github.com/dagster-io/dagster/issues/24234
+
+## Kenapa menggunakan Partition?
+1. Tanpa partition: Semua data harus diload sekaligus. Berat dan rentan error
+2. Dengan partition: Loading data dapat dibagi berdasarkan kolom tertentu (pada kasus ini data dibagi berdasarkan kolom created_date), akan berguna untuk melakukan appending dan retry apabila salah satu partitionnya error
+
+##### Asset di dagster UI dengan dan tanpa partition
+![Asset di dagster UI dengan dan tanpa partition](partition_on_assets.png)
+
+##### Pilihan mau menjalankan partition yang mana
+Kalau partitionnya sudah dikaitkan dengan asset, ketika ingin dijalankan Dagster akan meminta kita meilih partition mana yang ingin dijalankan seperti berikut
+![Pilihan mau menjalankan partition yang mana](partition_selection.png)
+
