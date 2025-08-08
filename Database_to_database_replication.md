@@ -254,6 +254,8 @@ def load_entire_database() -> None:
     )
     print(info)
 ```
+
+##### Schema yang terbentuk di snowflake setelah pipeline dijalankan
 ![Schema yang terbentuk di snowflake setelah pipeline dijalankan](sql_properties_mysql.png)
 
 2. Membuat function untuk melakukan update ke salah satu tabel yang sudah terdapat dalam schema snowflake (lihat function load_standalone_table_resource() dalam dokumentasi. Namun perlu diingatkan bahwa ada beberapa modifikasi yang dilakukan agar function bisa terintregasi dengan partition dagster)
@@ -389,9 +391,11 @@ Notes:
 - end_date tidak wajib didefinisikan
 - Karena perbedaan timezone, kalau mau mendefinisikan end_date pastikan sudah lewat 1 hari dari tanggal hari ini (h+1). Karena kalau tidak, partition di hari ini masih belum tersedia untuk dijalankan
 
+##### Asset di dagster UI dengan dan tanpa partition
 ![Asset di dagster UI dengan dan tanpa partition](partition_on_assets.png)
 
-![Pilihan mau maenjalankan partition yang mana](partition_selection.png)
+##### Pilihan mau menjalankan partition yang mana
+![Pilihan mau menjalankan partition yang mana](partition_selection.png)
 
 ### Jobs dan Schedules
 #### Jobs
@@ -422,6 +426,8 @@ asset_partitioned_schedule = dg.build_schedule_from_partitioned_job(
 Job tersebut akan secara otomatis menjalankan partition terakhir di jam 03.35 UTC (10.35 WIB, disetting jam segitu untuk coba testing tadi).
 
 Misalnya hari ini tanggal 8 Agustus 2025, maka pada jam 10.35 WIB hari ini job akan menjalankan partition data tanggal 7 Agustus 2025
+
+##### Run jobs yang telah terotomatisasi di tanggal 8 Agustus 2025
 ![Run jobs yang telah terotomatisasi di tanggal 8 Agustus 2025](scheduling.png)
 
 ## Transform menggunakan DBT
@@ -494,6 +500,7 @@ Penjelasan alur kode:
 2. Apabila source yang dicari sudah ditemukan, maka source tersebut dihubungkan dengan asset DLT.
 
 Ketika asset termaterialisasi akan terbentuk view dengan nama yang sama dengan nama models (karena materialization type yang disetting memang views)
+##### Hasil dari materialisasi asset model DBT
 ![Hasil dari materialisasi asset model DBT](DBT_result.png)
 
 # TL;DR alur kerja
