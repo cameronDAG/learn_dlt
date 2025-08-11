@@ -192,3 +192,8 @@ Penjelasan:
 
 Hasil akhir:
 ![hourly_partition](hourly_partition.png)
+
+## Test edge case
+Apa yang terjadi kalau server idle selama lebih dari 1 jam?
+- Dagster akan memulai run yang terlambat pada partisi terakhir saja
+![run](edge_case_partition.png)
