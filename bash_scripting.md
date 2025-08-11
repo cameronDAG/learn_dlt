@@ -189,3 +189,6 @@ Penjelasan:
 
 Penjelasan:
 - Data dari jam 14.00 - 14.55 berhasil diambil
+
+Hasil akhir:
+[hourly_partition](hourly_partition.png)
