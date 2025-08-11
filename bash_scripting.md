@@ -90,7 +90,7 @@ daily_partition = dg.DailyPartitionsDefinition(
 )
 ```
 Hasil akhir:
-[partition](customer_partition.png)
+![partition](customer_partition.png)
 
 asset tersebut berhasil mengambil data dengan created_date tanggal 08/08/2025
 
@@ -103,9 +103,9 @@ asset_partitioned_schedule_customer = dg.build_schedule_from_partitioned_job(
 ```
 
 Hasil akhir:
-[scheduling](customer_scheduling.png)
+![scheduling](customer_scheduling.png)
 
 ## Cek data
 Data berada dalam database Manajemen_kos, schema customer_sql, table customers di dalam snowflake seperti berikut:
 
-[snowflake_data](customer_snowflake.png)
+![snowflake_data](customer_snowflake.png)
