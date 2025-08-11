@@ -109,3 +109,83 @@ Hasil akhir:
 Data berada dalam database Manajemen_kos, schema customer_sql, table customers di dalam snowflake seperti berikut:
 
 ![snowflake_data](customer_snowflake.png)
+
+# Version 3
+11/08/2025
+
+Pada versi ini partition pada asset diubah menjadi hourly untuk melakukan testing apakah alur data sudah berjalan dengan benar
+
+## Pembuatan hourly partition
+```py
+hourly_partition = dg.HourlyPartitionsDefinition(
+    start_date="2025-08-08-00:00+0700",
+    end_date="2025-08-15-00:00+0700"
+)
+```
+
+hourly partition membutuhkan tanggal beserta jam, menit, dan timezone. (sebenernya agak percuma setting timezone, karena pada akhirnya Dagster UI bakal nampilin jamnya yang udah diconvert ke UTC juga)
+
+## Scheduling
+Scheduling disini tinggal kita ganti dengan menghapus hour_of_day (karena udah disetting dengan hourly partition juga) dan mengubah minute_of_hour dengan menit keberapa kita ingin schedule dijalankan.
+
+```py
+asset_partitioned_schedule_customer = dg.build_schedule_from_partitioned_job(
+    dlt_assets_job_customer, minute_of_hour=00 #ambil setiap menit ke-0
+)
+```
+
+## Perubahan di pipeline
+```py
+@dg.asset( 
+    partitions_def=hourly_partition
+)
+def run_customer_list_asset_mysql(context: dg.AssetExecutionContext):
+    partition_date_str = context.partition_key
+    date_to_fetch = partition_date_str
+    print("Running DLT pipeline for customers")
+    load_customer_table(date_to_fetch)
+```
+
+date_to_fetch yang dikembalikan oleh hourly partition bentuknya ```YYYY-MM-DD-HH:MM```, sehingga formatnya perlu diubah dulu supaya dikenali sebagai datetime dalam python
+```py
+if len(filter_date) == 16:  # formatnya 'YYYY-MM-DD-HH:MM'
+        # tambahin :00 detik di akhir
+        filter_date = filter_date + ":00"
+    start_dt = datetime.strptime(filter_date, "%Y-%m-%d-%H:%M:%S") + timedelta(hours=7) #nyesuaiin timezone
+```
+
+Kenapa timezonenya masih perlu disetting?
+- Karena di format yang dikembalikan, nggak dikasih tau timezonenya jadi harus setting ulang
+
+Lalu, terjadi perubahan logika di pengambilan query data sesuai partition karena sekarang kita tidak hanya mengambil berdasarkan tanggal saja, namun berdasarkan tanggal dan jam. Sehingga kita memerlukan end datetime untuk mengambil seluruh data dalam jam tersebut.
+
+```py
+end_dt = start_dt + timedelta(hours=1)
+```
+
+Hasil query akhir:
+
+```py
+return query.where(table.c.created_at >= start_dt,
+    table.c.created_at < end_dt)
+```
+
+## Hasil insert
+### Jam 13.08
+[data_insert_1pm](1pm_run.csv)
+
+Penjelasan:
+- cron tidak memasukkan semua data di sekitar jam 12.50 - 13.10 karena server berstatus idle saat pc ditinggal untuk jam istirahat
+- Job dirunning di jam 13.08 karena pada jam itulah server aktif kembali dan dagster menjalankan job yang seharusnya dijalankan pada jam 13.00 WIB
+
+### Jam 14.00
+[data_insert_2pm](2pm_run.csv)
+
+Penjelasan:
+- Data dari jam 13.10 (data jam 13.00 dan 13.05 tidak ada karena server idle) - 13.55 berhasil diambil
+
+### Jam 15.00
+[data_insert_3pm](3pm_run.csv)
+
+Penjelasan:
+- Data dari jam 14.00 - 14.55 berhasil diambil
