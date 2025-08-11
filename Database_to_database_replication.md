@@ -27,6 +27,9 @@ google-auth
 pandas
 duckdb
 pymysql
+dbt-core
+dbt-snowflake
+dagster-webserver
 ```
 ## Inisiasi
 1. Dagster
@@ -515,4 +518,6 @@ Ya, Sling sendiri memang sebuah dat integration tools dan berfokus dalam replika
 ##### Pilihan mau menjalankan partition yang mana
 Kalau partitionnya sudah dikaitkan dengan asset, ketika ingin dijalankan Dagster akan meminta kita meilih partition mana yang ingin dijalankan seperti berikut
 ![Pilihan mau menjalankan partition yang mana](partition_selection.png)
+
+## Write disposition di pipeline itu apa?
 
