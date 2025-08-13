@@ -72,6 +72,7 @@ Kalau berdasarkan buku Data Quality Fundamental, sebaiknya buat 2 buah dashboard
     GROUP BY
         DATE_ADDED;
   ```
+  
 2. Understanding distribution
     bikin dashboard buat liat kalau distribusi data tiba-tiba jadi tidak normal
 
