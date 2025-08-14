@@ -1,7 +1,13 @@
-# Tahap Extract dan Load
+# Ide
+## Tahap Extract dan Load (Tidak dapat direalisasikan)
+Alasan tidak dapat direalisasikan:
+1. DLT hanya dapat membandingkan datanya sesuai dengan skema atau tidak pada saat diload saja, bukan sebelum data diload.
+2. Apabila data yang tidak memenuhi skema dlt ditolak, dlt tidak dapat memberitahukan mana data yang ditolak. Data langsung dibuang. Jadi harus ngecek manual ke setiap source buat tahu masalah yang terjadi.
+
+
+#### Schema dan Data Contract
 Tools: DLT, Sentry, Dagster
 
-### Schema dan Data Contract
 Schema dapat dibuat dalam fungsi Python maupun file .yaml terpisah, digunakan sebagai acuan validasi struktur dan tipe data yang dimuat oleh pipeline. Sementara itu, data contract adalah aturan yang ditetapkan untuk mengatasi apabila terjadi sebuah perubahan schema.
 
 Terdapat 3 level dalam data contract:
@@ -21,12 +27,12 @@ Terdapat 3 level dalam data contract:
 
 apabila terdapat pelanggaran terhadap schema, akan ditampilkan dalam SchemaValidationError yang bisa diimport dari library dlt.common.schema.exceptions
 
-### Sentry
+#### Sentry
 Berdasarkan tutorial Advanced DLT bagian 8: Logging & Tracing(https://colab.research.google.com/drive/1YCjHWMyOO9QGC66t1a5bIxL-ZUeVKViR#forceEdit=true&sandboxMode=true), DLT dapat terhubung dengan Sentry.
 
 Sentry merupakan sebuah tools yang menangani error logging & tracking. Sentry akan menampilkan hasil exception dalam python ke dalam dashboardnya melalui fungsi ```sentry_sdk.capture_exception(e)```
 
-## Alur kerja
+### Alur kerja
 1. Tetapkan schema untuk masing-masing data
 2. Setting data contract untuk setiap level sebagai freeze, agar schema tidak berubah. Write disposition = merge
 3. Buat sentry menangkap exception yang menyebabkan pipeline gagal dijalankan
@@ -39,16 +45,16 @@ Alternatif yang lebih susah tapi kayaknya lebih efektif
 4. Masukin data yang rusak ke dalam tabel khusus buat diolah dulu
 5. Setelah data yang bermasalah diperbaiki, load lagi ke pipeline
 
-# Tahap transform
+## Tahap transform
 Tools: DBT, Dagster, Great Expectation
 
-### DBT Unit testing
+#### DBT Unit testing
 DBT dapat melakukan generic dan singular testing, tapi tidak dapat membuat alert untuk developer.
 
-### Great Expectation
+#### Great Expectation
 Merupakan library python yang digunakan untuk melakukan testing terhadap data. Tools ini juga dapat mengirimkan alert lewat e-mail/slack/teams
 
-## Alur kerja
+### Alur kerja
 1. Cek lagi di Great Expectation dan dbt dijadikan alat transform aja
 2. Transformasi di dbt
 3. Lanjut ke nodes selanjutnya
@@ -57,13 +63,13 @@ Merupakan library python yang digunakan untuk melakukan testing terhadap data. T
 Kenapa nggak ngirim alert dari dagster aja?
 - Dagster cuma bakal ngasih alert "job A is failed" tapi buat detailnya kita tetep harus nyari sendiri di log
 
-# Extra step
-## Dashboard
+## Extra step
+### Dashboard
 Kalau berdasarkan buku Data Quality Fundamental, sebaiknya buat 2 buah dashboard ini
 
 1. Monitoring for freshness
     Buat graph bar chart yang terbentuk dari jumlah data yang masuk per-harinya
-    ```sql
+```sql
      SELECT
         DATE_ADDED,
         COUNT(*) AS ROWS_ADDED
@@ -71,15 +77,63 @@ Kalau berdasarkan buku Data Quality Fundamental, sebaiknya buat 2 buah dashboard
         EXOPLANETS
     GROUP BY
         DATE_ADDED;
-  ```
-  
+```
+
 2. Understanding distribution
     bikin dashboard buat liat kalau distribusi data tiba-tiba jadi tidak normal
 
-## Data catalog
+### Data catalog
 - Simpan metadata pipeline dlt
 - Simpan hasil testing Great Expectation buat tau kualitas data
 - Metadata bisnis (owner dari data)
 - Last updated timestamp
 
 Saran tools: Datahub
+
+# Praktek
+## Create dummy data
+Pertama-tama, kita akan membuat table yang berisi dummy data bernama 'manusia', tabel tersebut akan memiliki data yang memiliki salah satu ciri-ciri dibawah ini:
+1. Data normal (tidak bermasalah)
+2. Id duplikat
+3. Nama null
+4. Email tidak valid
+5. Tinggi badan tidak masuk akal
+6. Berat badan tidak masuk akal
+
+```sql
+CREATE TABLE manusia
+(
+    id varchar(5),
+    name varchar(100),
+    email varchar(100),
+    tinggi float,
+    berat float
+);
+
+INSERT INTO manusia (id, name, email, tinggi, berat) VALUES
+-- ✅ Data valid
+('A001', 'Andi Saputra', 'andi.saputra@example.com', 172, 68),
+('A002', 'Budi Santoso', 'budi.santoso@example.com', 165, 60),
+
+-- ❌ Duplikat ID
+('A001', 'Citra Lestari', 'citra.lestari@example.com', 158, 50),
+
+-- ❌ Nama kosong
+('A003', '', 'no.name@example.com', 170, 65),
+
+-- ❌ Email tidak valid
+('A004', 'Dedi Kurniawan', 'dedi.kurniawan[at]example.com', 180, 75),
+('A005', 'Eka Putri', 'ekaputri.example.com', 160, 55),
+
+-- ❌ Tinggi tidak masuk akal (dalam meter, terlalu kecil)
+('A006', 'Fajar Nugraha', 'fajar.nugraha@example.com', 1.7, 65),
+
+-- ❌ Tinggi tidak masuk akal (terlalu besar, misal dalam cm tapi salah input jadi 500)
+('A007', 'Gilang Ramadhan', 'gilang.ramadhan@example.com', 500, 70),
+
+-- ❌ Berat tidak masuk akal (dalam gram, terlalu kecil)
+('A008', 'Hesti Purnama', 'hesti.purnama@example.com', 160, 0.07),
+
+-- ❌ Berat tidak masuk akal (terlalu besar, misal dalam pound atau salah input jadi 800)
+('A009', 'Indra Wijaya', 'indra.wijaya@example.com', 175, 800);
+```
