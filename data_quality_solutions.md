@@ -133,7 +133,7 @@ INSERT INTO manusia (id, name, email, tinggi, berat) VALUES
 -- ❌ Berat tidak masuk akal (terlalu besar, misal dalam pound atau salah input jadi 800)
 ('A009', 'Indra Wijaya', 'indra.wijaya@example.com', 175, 800);
 ```
-## Sambungkan akun Great Expectation dengan snowflake
+## Integrasi Great Expectation ke dalam solusi
 ### GX Cloud
 1. Login ke GX Cloud
 2. Klik Data asset -> new data asset -> new data source -> snowflake
