@@ -175,24 +175,24 @@ batch_definition_name = "FULL_TABLE"
 ```
 6. Buat expectation untuk masing-masing masalah yang ingin dicek
     list dari expectation dapat dibaca di https://greatexpectations.io/expectations/
-    - ID harus unik
+    - ID harus unik ->
 
     Expectation yang digunakan: ExpectColumnValuesToBeUnique
 
-    - Nama tidak boleh kosong
+    - Nama tidak boleh kosong ->
 
     Expectation yang digunakan: ExpectColumnValuesToNotBeNull, ExpectColumnValuesToNotMatchRegex(memastikan agar nama bukan string kosong saja)
 
-    - Email harus dalam format yang valid
+    - Email harus dalam format yang valid ->
 
     Expectation yang digunakan: ExpectColumnValuesToMatchRegex
 
-    - Tinggi badan tidak boleh bernilai ekstrim
+    - Tinggi badan tidak boleh bernilai ekstrim ->
 
     Expectation yang digunakan: ExpectColumnValuesToBeBetween(disetting agar menerima nilai tinggi badan berkisar 110 hingga 200 saja)
 
-    - Berat bada tidak boleh bernilai ekstrim
-    
+    - Berat badan tidak boleh bernilai ekstrim ->
+
     Expectation yang digunakan: ExpectColumnValuesToBeBetween(disetting agar menerima nilai berat badan berkisar 40 hingga 150 saja)
 
 Hasil validasi: [validasi_pertama](validasi_pertama.json)
