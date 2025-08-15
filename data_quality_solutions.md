@@ -112,11 +112,7 @@ CREATE TABLE manusia
 
 INSERT INTO manusia (id, name, email, tinggi, berat) VALUES
 -- ✅ Data valid
-('A001', 'Andi Saputra', 'andi.saputra@example.com', 172, 68),
 ('A002', 'Budi Santoso', 'budi.santoso@example.com', 165, 60),
-
--- ❌ Duplikat ID
-('A001', 'Citra Lestari', 'citra.lestari@example.com', 158, 50),
 
 -- ❌ Nama kosong
 ('A003', '', 'no.name@example.com', 170, 65),
@@ -137,3 +133,62 @@ INSERT INTO manusia (id, name, email, tinggi, berat) VALUES
 -- ❌ Berat tidak masuk akal (terlalu besar, misal dalam pound atau salah input jadi 800)
 ('A009', 'Indra Wijaya', 'indra.wijaya@example.com', 175, 800);
 ```
+## Sambungkan akun Great Expectation dengan snowflake
+### GX Cloud
+1. Login ke GX Cloud
+2. Klik Data asset -> new data asset -> new data source -> snowflake
+3. Masukkan credential akun snowflake
+
+Masalah:
+1. UI bagus, mudah ditelusuri, tapi testing validasi terbatas 5x perbulan untuk plan yang free.
+
+### GX Core
+1. Install library great_expectations
+2. Connect ke akun snowflake
+3. Define data source
+```py
+datasource_name = "my_new_datasource"
+    my_connection_string = os.getenv("MY_SNOWFLAKE_CONNECTION_STRING")
+    data_source = context.data_sources.add_snowflake(
+        name=datasource_name, connection_string=my_connection_string
+    )
+```
+4. Define asset
+```py
+asset_name = "MANUSIA_ASSET"
+    database_table_name = "manusia"
+    table_data_asset = data_source.add_table_asset(
+        table_name=database_table_name, name=asset_name
+    )
+
+    data_asset = data_source.get_asset(asset_name)
+```
+5. Define batch (batch ini seperti partisi, tapi untuk saat ini datanya belum kita bagi dan langsung tes keseluruhan)
+```py
+batch_definition_name = "FULL_TABLE"
+    batch_definition = (
+        context.data_sources.get(datasource_name)
+        .get_asset(asset_name)
+        .get_batch_definition(batch_definition_name)
+    )
+    batch = batch_definition.get_batch()
+```
+6. Buat expectation untuk masing-masing masalah yang ingin dicek
+    list dari expectation dapat dibaca di https://greatexpectations.io/expectations/
+    - ID harus unik
+    Expectation yang digunakan: ExpectColumnValuesToBeUnique
+
+    - Nama tidak boleh kosong
+    Expectation yang digunakan: ExpectColumnValuesToNotBeNull, ExpectColumnValuesToNotMatchRegex(memastikan agar nama bukan string kosong saja)
+
+    - Email harus dalam format yang valid
+    Expectation yang digunakan: ExpectColumnValuesToMatchRegex
+
+    - Tinggi badan tidak boleh bernilai ekstrim
+    Expectation yang digunakan: ExpectColumnValuesToBeBetween(disetting agar menerima nilai tinggi badan berkisar 110 hingga 200 saja)
+
+    - Berat bada tidak boleh bernilai ekstrim
+    Expectation yang digunakan: ExpectColumnValuesToBeBetween(disetting agar menerima nilai berat badan berkisar 40 hingga 150 saja)
+
+Hasil validasi: [validasi_pertama](validasi_pertama.json)
+Hasilnya sudah sesuai dengan yang diharapkan, langkah selanjutnya adalah membuat action berdasarkan hasil tersebut. Selain itu, integrasi dengan dagster masih gagal karena minimnya dokumentasi mengenai integrasi great expectation dengan dagster.
