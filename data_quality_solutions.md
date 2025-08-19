@@ -197,3 +197,66 @@ batch_definition_name = "FULL_TABLE"
 
 Hasil validasi: [validasi_pertama](validasi_pertama.json)
 Hasilnya sudah sesuai dengan yang diharapkan, langkah selanjutnya adalah membuat action berdasarkan hasil tersebut. Selain itu, integrasi dengan dagster masih gagal karena minimnya dokumentasi mengenai integrasi great expectation dengan dagster.
+
+### Dagster asset
+dalam dokumentasi resmi dagster belum begitu banyak informasi mengenai integrasi great expectation sebagai asset dalam dagster. Hal ini juga dapat dilihat pada issue di github yang telah ditutup karena tidak ada perkembangan. https://github.com/dagster-io/dagster/issues/22562
+
+
+banyak juga masalah yang terjadi pada saat menginstall dependency ```uv pip install dagster-ge```.
+Salah satunya adalah, semua library akan direplace ke versi yang lebih lama sehingga mengganggu integrasi dengan package yang lainnya. Hal ini juga membuktikan bahwa integrasi dagster dengan great expectation sepertinya sudah tidak diperbaharui semenjak lama.(tambahan: kalau mau mengikuti dokumentasi great expectation, pastikan versi yang diinstall sama persis dengan dokumentasi. Versi yang sekarang dipakai = 1.5.8)
+
+
+oleh karena itu untuk mendapatkan hasil dari great expectation, solusi yang pada saat ini dihasilkan adalah menjalankan seluruh script python sebagai sebuah asset di dagster
+
+```py
+@asset
+def run_manusia_list_check():
+    result = subprocess.run(["python", "dlt_pipeline/data_quality_testing_pipeline.py"], capture_output=True, text=True)
+    output_file = "result_manusia_check.json"
+    with open(output_file, "w") as f:
+        f.write(result.stdout)
+    
+```
+
+Asset tersebut menghasilkan file json yang sama persis dengan [validasi_pertama](validasi_pertama.json). 
+
+Langkah selanjutnya adalah memisahkan tabel data ke clean dan quarantine table, berikut langkah yang dicoba:
+1. Mengambil data dari tabel snowflake dan diubah ke dataframe
+2. Menentukan mana kolom yang disebut dalam hasil testing great expectation untuk dipindahkan ke quarantine table
+```py
+def manusia_filtering():
+    df = fetch_data_from_snowflake()
+    df.columns = [col.lower() for col in df.columns]
+    with open("result_manusia_check.json") as f:
+        ge_result = json.load(f)
+
+    results = ge_result["results"]
+
+    quarantine_filter = pd.Series([False]*len(df))
+
+    for exp in results:
+        if not exp['success']:
+            col = exp['expectation_config']['kwargs']['column']
+            unexpected_values = exp['result'].get('partial_unexpected_list', [])
+            if unexpected_values:
+                # Tandai baris yang gagal
+                quarantine_filter |= df[col].isin(unexpected_values)
+
+    # Pisahkan dataframe
+    df_quarantine = df[quarantine_filter].copy()
+    df_clean = df[~quarantine_filter].copy()
+    print(df_quarantine, "\n\n", df_clean)
+    quarantine_records = df_quarantine.to_dict(orient="records")
+    clean_records = df_clean.to_dict(orient="records")
+    print("Quarantine Records:", clean_records)
+    return quarantine_records, clean_records
+
+```
+3. Meload masing-masing data(clean dan quarantine) ke snowflake
+
+#### Notes: pada akhirnya diputuskan untuk menggunakan asset_check dari dagster saja
+alasan:
+1. Kalau ada error bisa terlihat langsung di Dagster UI
+2. Kalau tabel bertambah, quarantine dan clean table akan bertambah juga sehingga boros resources
+3. Penambahan expectation test juga akan semakin ribet semakin banyaknya tabel
+
