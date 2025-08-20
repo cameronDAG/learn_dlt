@@ -260,3 +260,35 @@ alasan:
 2. Kalau tabel bertambah, quarantine dan clean table akan bertambah juga sehingga boros resources
 3. Penambahan expectation test juga akan semakin ribet semakin banyaknya tabel
 
+### Asset check
+1. Buat asset yang melakukan loading data ke dalam snowflake dan memanggil kembali datanya sebagai dataframe (agar bisa dicek menggunakan asset checks)
+```py
+@asset
+def run_manusia_list_asset() -> DataFrame:
+    load_manusia_table()
+    df = fetch_data_from_snowflake()
+    return df
+```
+
+2. Buat asset checks yang mengembalikan jumlah row error dan dictionary json dari data yang error
+```py
+@asset_check(asset=run_manusia_list_asset, description="Kolom tinggi antara 110 dan 200")
+def check_tinggi_range(run_manusia_list_asset: pd.DataFrame) -> AssetCheckResult:
+    df = run_manusia_list_asset
+    mask = (df["TINGGI"] >= 110) & (df["TINGGI"] <= 200)
+    passed = bool(mask.all())
+    invalid_df = df[~mask]
+    invalid_dicts = invalid_df.to_dict(orient="records")
+    invalid_count = int((~mask).sum())
+    return AssetCheckResult(
+        passed=passed,
+        metadata={"invalid_count": invalid_count,
+                   "invalid_records": invalid_dicts}
+    )
+```
+
+Hasil ketika dijalankan:
+![asset_checks](asset_check.png)
+
+Isi invalid record
+![invalid_record](invalid_record.png)
