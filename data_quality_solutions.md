@@ -292,3 +292,33 @@ Hasil ketika dijalankan:
 
 Isi invalid record
 ![invalid_record](invalid_record.png)
+
+
+3. Pakai sentry untuk mengirim email setiap ada check yang tidak terpenuhi
+```py
+@asset_check(asset=run_manusia_list_asset, description="Kolom tinggi antara 110 dan 200")
+def check_tinggi_range(run_manusia_list_asset: pd.DataFrame) -> AssetCheckResult:
+    df = run_manusia_list_asset
+    mask = (df["TINGGI"] >= 110) & (df["TINGGI"] <= 200)
+    passed = bool(mask.all())
+    invalid_df = df[~mask]
+    invalid_dicts = invalid_df.to_dict(orient="records")
+    invalid_count = int((~mask).sum())
+
+    status = "warn" if not passed else "ok"
+
+    if status == "warn":
+        sentry_sdk.capture_exception( Exception(
+            f"[Data Quality Warning] Asset `run_manusia_list_asset` gagal check `tinggi_range`. "
+            f"{invalid_count} record invalid."
+            f"Invalid records: {invalid_dicts[:5]}..."
+         # Hanya tampilkan 5 record pertama
+        ))
+    return AssetCheckResult(
+        passed=passed,
+        metadata={
+            "invalid_count": invalid_count,
+            "invalid_records": invalid_dicts,
+            "status": status}
+    )
+```
