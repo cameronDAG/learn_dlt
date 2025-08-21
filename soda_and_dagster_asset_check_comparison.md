@@ -5,6 +5,8 @@ Dokumentasi mengenai eksplorasi full dapat diakses di [data_quality_solutions.md
 Pro:
 - Karena dagster merupakan tools yang kita gunakan, integrasi asset checks ke dalam orchestration lebih mudah
 - Dapat menampilkan detail rows yang ditolak
+
+
 ![invalid_record](invalid_record.png)
 
 Kontra:
