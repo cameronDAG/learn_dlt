@@ -260,7 +260,7 @@ alasan:
 2. Kalau tabel bertambah, quarantine dan clean table akan bertambah juga sehingga boros resources
 3. Penambahan expectation test juga akan semakin ribet semakin banyaknya tabel
 
-### Asset check
+### Dagster Asset check
 1. Buat asset yang melakukan loading data ke dalam snowflake dan memanggil kembali datanya sebagai dataframe (agar bisa dicek menggunakan asset checks)
 ```py
 @asset
@@ -321,4 +321,84 @@ def check_tinggi_range(run_manusia_list_asset: pd.DataFrame) -> AssetCheckResult
             "invalid_records": invalid_dicts,
             "status": status}
     )
+```
+
+### Soda Core
+Kenapa tidak pakai Soda Cloud seperti yang tersedia pada dokumentasi? https://docs.soda.io/use-case-guides/quick-start-dagster 
+
+Kronologi:
+1. url untuk sign up tidak bisa dibuka (error 404 Not Found)
+2. Di bagian halaman login tidak ada opsi sign up
+3. Setelah ditelusuri di halaman https://www.soda.io/resources/no-bs-guide-to-data-quality-dimensions fitur sign up memang sedang tidak disediakan
+```
+The self-serve account creation for Soda Cloud is temporarily paused as we're preparing the general availability of several major updates. If you want to try Soda Cloud in the meantime, please schedule a call with our team of experts, discuss your use case, and get started.
+```
+
+1. Instalasi package
+```bash
+uv pip install soda-snowflake
+```
+
+2. Setting configuration.yml
+```yml
+data_source my_datasource_name:
+  type: snowflake
+  username: <username>
+  password: <password>
+  account: <account>.<region>
+  database: <database>
+  warehouse: <warehouse>
+  connection_timeout: 240
+  role: <role> (disini pakai ACCOUNTADMIN)
+  client_session_keep_alive: true
+  session_params:
+    QUERY_TAG: soda-queries
+    QUOTED_IDENTIFIERS_IGNORE_CASE: false
+  schema: <schema>
+```
+
+untuk mendapatkan account dan region, sebaiknya jalankan query dibawah ini dalam snowflake
+```sql
+select current_account(), current_region();
+```
+
+apabila semuanya sudah disetel, jalankan
+```bash
+soda test-connection -d my_datasource_name -c configuration.yml -V
+```
+
+pastikan terminal menampilkan ```Connection 'my_datasource_name' is valid.```
+
+2. setting checks.yml
+Untuk kumpulan command check sendiri bisa dilihat di https://docs.soda.io/sodacl-reference
+
+```yml
+# checks.yml
+checks for MANUSIA:
+  # 1. Tinggi antara 110 dan 200
+  - invalid_count(TINGGI) = 0:
+      valid min: 110
+      valid max: 200
+
+  # 2. Berat antara 40 dan 150
+  - invalid_count(BERAT) = 0:
+      valid min: 40
+      valid max: 150
+
+  # 3. Kolom ID harus unik
+  - duplicate_count(ID) = 0
+
+  # 4. Kolom NAME tidak boleh null
+  - missing_count(NAME) = 0:
+      missing values: [N/A, '0000', none,'',' ']
+
+  # 5. Kolom EMAIL harus format email valid
+  - invalid_count(EMAIL) = 0:
+      valid format: email
+
+```
+
+jalankan
+```bash
+soda scan -d my_datasource_name -c configuration.yml checks.yml
 ```
