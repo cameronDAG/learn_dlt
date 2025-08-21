@@ -1,5 +1,18 @@
 Dokumentasi mengenai eksplorasi full dapat diakses di [data_quality_solutions.md](data_quality_solutions.md)
+# Prequisite
+Karena kita juga akan menggunakan Sentry, atur dulu koneksi sentry di file asset_check.py 
+```py
+import sentry_sdk 
+from dotenv import load_dotenv 
 
+load_dotenv()
+
+sentry_sdk.init(
+    dsn=os.getenv("SENTRY_DSN"),
+
+    send_default_pii=True,
+)
+```
 # Perbandingan
 ## Dagster Asset Checks
 Pro:
@@ -166,6 +179,15 @@ soda test-connection -d my_datasource_name -c configuration.yml -V
 
 pastikan terminal menampilkan ```Connection 'my_datasource_name' is valid.```
 
+
+contoh:
+```bash
+Successfully connected to 'my_datasource_name'.
+[14:58:28] Query 1.my_datasource_name.test-connection:
+SELECT 1
+Connection 'my_datasource_name' is valid.
+```
+
 3. setting checks.yml
 Untuk kumpulan command check sendiri bisa dilihat di https://docs.soda.io/sodacl-reference
 
@@ -261,6 +283,171 @@ def soda_quality_check_cli(context) -> AssetCheckResult:
         metadata=metadata
     )
 ```
+
+### Implementasi V2 - 1 file yml check untuk masing-masing asset
+Alasan: Lebih baik filenya dipisah daripada harus parsing 1 hasil scan yang besar setiap kali asset check dijalankan.
+
+
+Dataset yang digunakan: Manusia dan Manusia_Quarantine
+
+
+Dataset tersebut sebenarnya hampir sama, dipakai hanya untuk membuktikan teori implementasi file yml yang berbeda. Untuk pembeda, dataset Manusia memiliki 5 test, sementara Manusia_Quarantine memiliki 4 test saja (tes untuk range tinggi sengaja tidak dimasukkan)
+
+
+Cara kerja:
+1. Buat file yml untuk check yang berbeda
+
+
+checks_manusia.yml
+```yml
+# checks.yml
+checks for MANUSIA:
+  # 1. Tinggi antara 110 dan 200
+  - invalid_count(TINGGI) = 0:
+      valid min: 110
+      valid max: 200
+
+  # 2. Berat antara 40 dan 150
+  - invalid_count(BERAT) = 0:
+      valid min: 40
+      valid max: 150
+
+  # 3. Kolom ID harus unik
+  - duplicate_count(ID) = 0
+
+  # 4. Kolom NAME tidak boleh null
+  - missing_count(NAME) = 0:
+      missing values: [N/A, '0000', none,'',' ']
+
+  # 5. Kolom EMAIL harus format email valid
+  - invalid_count(EMAIL) = 0:
+      valid format: email
+```
+
+
+checks_manusia_quarantine.yml
+```yml
+checks for MANUSIA_QUARANTINE:
+  # 2. Berat antara 40 dan 150
+  - invalid_count(BERAT) = 0:
+      valid min: 40
+      valid max: 150
+
+  # 3. Kolom ID harus unik
+  - duplicate_count(ID) = 0
+
+  # 4. Kolom NAME tidak boleh null
+  - missing_count(NAME) = 0:
+      missing values: [N/A, '0000', none,'',' ']
+
+  # 5. Kolom EMAIL harus format email valid
+  - invalid_count(EMAIL) = 0:
+      valid format: email
+
+```
+2. Pastikan dagster asset_checks dapat melakukan scan dengan library soda dan menghasilkan file dalam bentuk dictionary
+```py
+scan = Scan()
+scan.set_data_source_name("my_datasource_name")
+scan.add_configuration_yaml_file("configuration.yml")
+scan.add_sodacl_yaml_file("checks_manusia_quarantine.yml")
+
+
+# Run scan
+result_execute = scan.execute()   # dict-like result
+result = scan.get_scan_results()
+```
+
+3. Parsing hasil scan untuk mendapatkan metadata yang diinginkan dengan memasukkan ke fungsi
+```py
+def extract_scan_results(scan_results: dict):
+    table_checks = scan_results.get("checks", [])
+
+    if not table_checks:
+        return {
+            "total_checks": 0,
+            "passed_checks": 0,
+            "failed_checks": 0,
+            "passed_details": [],
+            "failed_details": [],
+            "passed_check": False  # no checks means it's not passed
+        }
+
+    total = len(table_checks)
+    passed = sum(1 for c in table_checks if c.get("outcome") == "pass")
+    failed = sum(1 for c in table_checks if c.get("outcome") == "fail")
+
+    passed_checks = [
+        {
+            "check_name": c["name"],
+            "column": c.get("column"),
+            "definition": c.get("definition")
+        }
+        for c in table_checks if c.get("outcome") == "pass"
+    ]
+
+    failed_checks = [
+        {
+            "check_name": c["name"],
+            "column": c.get("column"),
+            "definition": c.get("definition"),
+            "value": c.get("diagnostics", {}).get("value"),
+            "failing_rows": (
+                c.get("diagnostics", {})
+                 .get("blocks", [{}])[0]
+                 .get("totalFailingRows")
+            )
+        }
+        for c in table_checks if c.get("outcome") == "fail"
+    ]
+
+    metadata = {
+        "total_checks": total,
+        "passed_checks": passed,
+        "failed_checks": failed,
+        "passed_details": passed_checks,
+        "failed_details": failed_checks,
+        "passed_check": failed == 0  # convenient flag
+    }
+    return metadata
+```
+
+#### Hasil
+- Materialisasi asset
+
+
+![asset_materialization](asset_materialization.png)
+
+
+Keterangan: Asset akan dijalankan terlebih dahulu sebelum kumpulan check
+
+
+- Eksekusi asset check
+![check_execution](check_execution.png)
+
+
+Keterangan: Check dijalankan untuk masing-masing asset
+
+- Hasil asset_check yang mengandung soda  
+
+
+Manusia:
+
+
+![manusia](manusia_check.png)
+![manusia_failed](manusia_failed.png)
+
+
+Manusia_Quarantine:
+
+
+![quarantine](quarantine_check.png)
+![quarantine_failed](quarantine_failed.png)
+
+
+Penjelasan: Terdapat perbedaan jumlah test dalam masing-masing asset sesuai dengan yang ditulis pada point pertama
+
+
 #### Kenapa Capture Exception tidak bisa digunakan untuk soda
 Terdapat 2 metode memberikan notifikasi:
 1. Capture Exception -> Levelnya otomatis dianggap sebagai error, tapi di asset checks yang sudah terintegrasi dengan soda tidak bisa dijalankan
