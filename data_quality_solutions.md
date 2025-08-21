@@ -402,3 +402,124 @@ jalankan
 ```bash
 soda scan -d my_datasource_name -c configuration.yml checks.yml
 ```
+
+untuk diintegrasikan dengan dagster asset checks, bisa dijalankan menggunakan sub process seperti ini
+
+```py
+@asset_check(asset="run_manusia_list_asset")
+def soda_quality_check_cli(context) -> AssetCheckResult:
+    result = subprocess.run(
+        ["soda", "scan", "-d", "my_datasource_name", "-c", "configuration.yml", "checks.yml"],
+        capture_output=True, text=True
+    )
+
+    stdout = result.stdout
+    stderr = result.stderr
+
+    match = re.search(r"(\d+)/(\d+) checks PASSED", stdout)
+    if match:
+        passed = int(match.group(1))
+        total = int(match.group(2))
+    else:
+        passed, total = 0, 0
+
+    failed = total - passed
+
+    # Parse failed checks
+    failed_details = {}
+    pattern = re.compile(
+        r"^(?:\[\d{2}:\d{2}:\d{2}\]\s+)?(.*?) \[FAILED\]\s*\n(?:\[\d{2}:\d{2}:\d{2}\]\s+)?check_value:\s*(\d+)",
+        re.MULTILINE
+    )
+
+    for m in pattern.finditer(stdout):
+        expr = m.group(1).strip()
+        expr = expr.split(" = ")[0]
+        value = m.group(2)
+        failed_details[expr] = value
+
+    metadata = {
+        "total_checks": total,
+        "passed_checks": passed,
+        "failed_checks": failed,
+        "failed_details": failed_details or {"None": "0"},
+        "soda_stdout": stdout[:1000],  # Limit length
+        "soda_stderr": stderr[:1000],
+    }
+    
+    passed_check = (failed == 0)
+
+    if not passed_check:
+        # Use capture_message instead
+        sentry_sdk.capture_message(
+            f"[Data Quality Warning] Asset `run_manusia_list_asset` failed soda checks. "
+            f"Failed: {failed}/{total} checks. Details: {failed_details}",
+            level="error"
+        )
+        # Add a small delay to ensure Sentry sends the message
+        time.sleep(1)
+
+    return AssetCheckResult(
+        passed=passed_check,
+        metadata=metadata
+    )
+```
+Penjelasan kode:
+1. Hasil output stdout yang ditangkap:
+```
+[10:33:05] Scan summary:
+[10:33:05] 1/5 checks PASSED: 
+[10:33:05]     MANUSIA in my_datasource_name
+[10:33:05]       duplicate_count(ID) = 0 [PASSED]
+[10:33:05] 4/5 checks FAILED: 
+[10:33:05]     MANUSIA in my_datasource_name
+[10:33:05]       invalid_count(TINGGI) = 0 [FAILED]
+[10:33:05]         check_value: 2
+[10:33:05]       invalid_count(BERAT) = 0 [FAILED]
+[10:33:05]         check_value: 2
+[10:33:05]       missing_count(NAME) = 0 [FAILED]
+[10:33:05]         check_value: 1
+[10:33:05]       invalid_count(EMAIL) = 0 [FAILED]
+[10:33:05]         check_value: 2
+[10:33:05] Oops! 4 failures. 0 warnings. 0 errors. 1 pass.
+```
+
+2. Parsing untuk menemukan total test yang lolos
+```py
+match = re.search(r"(\d+)/(\d+) checks PASSED", stdout)
+    if match:
+        passed = int(match.group(1))
+        total = int(match.group(2))
+    else:
+        passed, total = 0, 0
+
+    failed = total - passed
+```
+
+3. Mengambil detail test yang gagal ke dalam bentuk dictionary
+```py
+failed_details = {}
+    pattern = re.compile(
+        r"^(?:\[\d{2}:\d{2}:\d{2}\]\s+)?(.*?) \[FAILED\]\s*\n(?:\[\d{2}:\d{2}:\d{2}\]\s+)?check_value:\s*(\d+)",
+        re.MULTILINE
+    )
+
+    for m in pattern.finditer(stdout):
+        expr = m.group(1).strip()
+        expr = expr.split(" = ")[0]
+        value = m.group(2)
+        failed_details[expr] = value
+```
+
+### Sentry
+Sentry disini akhirnya digunakan kembali untuk memberi notifikasi saat ada check yang tidak terpenuhi.
+
+Terdapat 2 metode memberikan notifikasi:
+1. Capture Exception -> Levelnya otomatis dianggap sebagai error, tapi di asset checks yang sudah terintegrasi dengan soda tidak bisa dijalankan
+2. Capture Message -> Levelnya disetting sebagai warn
+
+#### Kenapa Capture Exception tidak bisa digunakan untuk soda
+Ini bukan jawaban yang sudah pasti, ini masih hipotesa saja. Tapi sepertinya karena dagster asset checksnya menjalankan soda di subprocess sementara exception ditangkap di dalam main process, sentry tidak dapat menerima apa-apa.
+
+
+Jadi sebaiknya apabila ingin menggunakan sentry, pakai saja metode capture message dengan level = error
