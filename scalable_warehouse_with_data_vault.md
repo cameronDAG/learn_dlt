@@ -484,3 +484,602 @@ The Meta Mart, Metrics Mart, and Error Mart are special instances of information
 - Metrics mart: Because it can be rebuilt and reloaded very easily, it can be stored on less reliable RAID configurations, such as RAID-0.
 - Meta mart:  Because it is the central place of storage, it has higher reliability requirements than other information marts. Instead, the requirements are comparable to the raw Data Vault layer, where a RAID-5 or RAID-1 level is typically used.
 - Error mart: It is the central location of all error information in the data warehouse. Therefore, it should be kept on RAID-5 or RAID-1.
+
+# Chapter 9 - MASTER DATA MANAGEMENT
+## Definition
+### Master Data
+Master data describes the business entities, which are part of the business processes implemented in operational systems of the organization. 
+
+
+Type:
+- Operational Master Data
+- Analytical Master Data
+
+### Data Management
+Data management includes the development and execution of architectures, practices, procedures and policies which are required to effectively manage an enterprise information life cycle. Its purpose is to plan, control and deliver the data and information assets required by the organization.
+
+## Master Data Management
+MDM is the creation of a single, well-defined version of all the data entities in the enterprise, the so-called “golden records” – in other words, a single copy of a record representing a single business concept like customer, or product, or order, or sale and so on.
+
+### Goals
+- Improve the quality of the data
+- Facilitate receiving, processing and checking of information
+- Facilitate exchange of data
+- Reduce information requirements
+
+## Drivers for Managing Master Data
+Benefit from managing master data:
+- Consistent master data
+- Complete master data
+- Correct format of master data
+- Master data attributes within range
+- Complex data handling
+- Deduplicated master data
+
+# Chapter 10 - METADATA MANAGEMENT
+## What is Metadata
+Metadata is all data about other data that is “needed to promote its administration and use” 
+
+- Back Room Metadata: this metadata is process related and describes the extraction, cleaning and loading processes. Its main purpose is to help the database administrator (DBA) or the data warehouse team to load the data into the data warehouse.
+- Front Room Metadata: this metadata is more descriptive and is used in query tools and report tools. It primarily benefits end-users and helps them to understand the technical solution when building front-end solutions.
+
+
+Category by areas in data warehouse:
+- Business metadata: describes the meaning of data for the business.
+- Technical metadata: describes the technical aspects of data, including data types, lineage, results from data profiling, etc. 
+- Process execution metadata: provides statistics about running ETL processes, including the number of records sourced and loaded to the destination, number of rows rejected and the time it took to load the data.
+
+## Business Metadata
+Business metadata describes the meaning of data for the business.
+
+
+list:
+- Business column names
+- Business definitions: for each attribute, table and other object, including soft business rules of the information mart, there should be a business description of the attribute’s, table’s or object’s business meaning
+- Ontologies and taxonomies: these business definitions describe the business objects behind the source data and the relationships to other business objects or the hierarchies that describe the business object itself. 
+- Physical table and column names: because front-end tools often present information to endusers with references to business names only, the business metadata needs to track the physical names that belong to the business names.
+- Technical numbering used to identify data elements in the technical model.
+
+
+Metadata that looks technical but can also be meant for business:
+- Record source: Because business users should be able to trace back data to a real-world source system they recognize. (Example: "Flight Tracking Database" or "Passenger Information System," not "dbserver01\prod01.")
+- Table specifications: Because business needs to understand what data is available and why it exists. (Example: Instead of saying "tbl_pas_01," describe it as "Passenger Personal Info Table – contains home address data.")
+- Hard exception-handling rules: Because business stakeholders need visibility into data quality handling, not just engineers. (Example: "If passenger date of birth is missing, reject record and send to error log.")
+- Source system business definitions: a dictionary of the data elements in the source system, but explained in business language. (Example: Instead of just saying “column: PASS_ADDR,” you write: “Home Address of the Passenger, as captured in the Passenger Information System (Personal Module).”)
+- (Soft) business rules: explain why the source data looks the way it does and help avoid duplicate or wrong transformations later. (Example: A system may prevent saving a booking without a passenger’s last name.)
+
+## Technical Metadata
+Most technical metadata is around technical components of the data warehouse.
+
+
+list:
+- Source systems: this type of metadata provides technical information about the source systems including the source database or flat file location and staging area tables used.
+- Data models: are the physical and logical data models, often presented in a graphical format, and provide information about the relationships between tables.
+- Data definitions: this list provides technical definitions of all columns in a data source. 
+- Business rules: the technical definitions of business rules are also considered as technical metadata because they need to be implemented in ETL later on.
+- Volumetrics: there should be information about the table size and growth patterns of the source tables to estimate the workload of the data warehouse for this source table.
+- Ontologies and taxonomies: technical metadata should also provide information about ontologies and taxonomies, including abbreviations of terms and attributes, relationships, business key designations, peers and parents, hierarchies and re-defines (cross-ontologies matching at a structure level).
+- Data quality: this kind of metadata provides information about standardization of source data and other data quality metrics.
+
+## Process Execution Metadata
+Process execution metadata is generated by the data warehouse team and provides insights into the ETL processing for maintenance. 
+
+
+list:
+- Control flow metadata: a control flow executes one or more data flows among other tasks. 
+- Data flow metadata: the data flow log provides information about the performance of data flows and how many records have been processed or rejected by each transformation.
+- Package metadata: a package executes a control flow. The package metadata provides summary information about the running time of the package.
+- Process metadata: most packages are executed by SQL Server Agent or another scheduling application. The process metadata provides information about the process that has started the package.
+
+## Implementing the Meta Mart
+The Meta Mart is the central piece for collecting business and technical metadata in the Data Vault 2.0 architecture. The Meta Mart provides a set of tables that are used to collect the metadata of the data warehouse.
+
+### Naming Conventions
+Set your mind to use prefix, suffix, Camel Case, or underscores to name your table. For example:
+
+1. H_Customer
+2. HUB_Customer
+3. HubCustomer
+4. CustomerHub
+
+
+When naming Raw Data Vault satellites, it is recommended to include an abbreviation for the source system because, in many cases, there are multiple satellites hanging off the parent hub or link. But if each source system creates a new satellite on a hub, they need different names to distinguish them from each other, both in a logical view and in physical implementation.
+
+### Capturing Source System Definition
+Typically, organizations decide to use at least the following metadata attributes to define the source systems sourced by their data warehouse:
+
+- Source system identifier
+- Source system technical description
+- Source system business description
+- Source system version
+- Source system quality
+- Data steward
+- System administrator
+
+### Capturing Hard Rule
+Hard rules in the data warehouse deal with data type conversions required for loading and technical issues that can arise when staging the data or loading the data from the staging area into the Raw Data Vault. Therefore, they are applied when loading the data into the staging area or loading the data from the staging area to the Raw Data Vault. Examples include:
+
+1. Assignment of source attribute to target attribute
+2. Hard rules that convert a source data type to a target data type
+3. Hard rules that ensure how to deal with wrongly sized data
+4. Invalid data type formats
+5. Unicode
+6. Reformat business keys
+7. Local smart keys
+8. Hash keys and hash differences
+
+The following metadata attributes should be used to define hard rules:
+- Data flow name (optional)
+- Name
+- Rule identifier
+- Description
+- Definition
+- Business area
+- Topic
+- Task/rule set
+- Source
+- Implementation type
+- Keywords
+- Related rules
+- Example
+
+
+Implementation type:
+
+![implementation_type](implementation_type.png)
+
+### Capturing Metadata for the Staging Area
+- Table identifier: the technical name of the parent data table.
+- Column identifier: the technical name of the column in the source table.
+- Source column physical name: the physical name of the source column in the source table.
+- Source data type: the data type of the source column.
+- description: the technical description of the column.
+- Column business description: a detailed textual description of the column in business terms.
+- Column business name: the common column name that is recognized by business users.
+- Column business alias: an alternative column name that is recognized by business users.
+- Column acronym name: a common acronym coding of the column name.
+- Required flag: indicates if the column is required to have a value (NOT NULL).
+- Computed flag: indicates if the column is derived from a computed column in the source system.
+- Target column physical name: the physical name of the target column in the staging area table.
+- Target data type: the data type of the target column.
+- Is sequence: indicates if the target column is a sequence column.
+- Is hash key: indicates if the target column is a hash key.
+- Is hash difference: indicates if the target column is a hash difference value.
+- Is record source: indicates if the target column is a record source attribute.
+- Is load date time: indicates if the target column is a load date time.
+- Hard rules: references to the hard rules that are applied within the loading process.
+
+### Capturing Requirements to Source Table
+Making the cross-reference table: a table used to map or link values from one system, domain, or code set to another. In this scenario it is made to identify the requirements that are affected by a change of the source system and to identify the source tables and columns that are needed to be sourced in order to implement a requirement
+
+### Capturing Source Table to Data Vault table
+
+#### Metadata for Loading Hub Entities
+1. Data flow name: the name of the data flow that is loading the target hub.
+2. Priority: a common practice is to source business keys from multiple sources. In this case, the priority can be used to determine the order of the data sources when loading the hub, which might affect the record source to be set in the target hub.
+3. Hub identifier: the technical name of the target hub.
+4. Target hub table physical name: the physical name of the target table in the Raw Data Vault.
+5. Source table identifier: the technical name of the source data table in the staging area.
+6. Source table physical name: the physical name of the source table in the staging area.
+7. Source column physical name: the physical name of the source column in the source table that holds the business key.
+8. Source column data type: the data type of the source column.
+9. Source column required: indicates if the source column allows NULL values.
+10. Source column default value: indicates the default value of the source column.
+11. Source column computation: if the source column is a computed field, provide the expression that computes the column value for documentation purposes.
+12. Business key column description: the technical description of the business key column.
+13. Business key column business description: a detailed textual description of the business key column in business terms.
+14. Business key column business name: the common business key column name that is recognized by business users.
+15. Business key column business alias: an alternative business key column name that is recognized by business users.
+16. Business key column acronym name: a common acronym coding of the business key column name.
+17. Business key physical name: the physical name of the target business key column in the hubtable.
+18. Target column number: The column number of the business key within composite keys. Otherwise 1.
+19. Target primary key physical name: the physical name of the target primary key column in the hub table.
+20. Target data type: the data type of the target business key column.
+21. Last seen date flag: indicates if a last seen date is used in the hub and should be updated in the loading process.
+22. Hard rules: references to the hard rules that are applied within the loading process for this business key.
+
+#### Metadata for Loading Link Entities
+1. Data flow name: the name of the data flow that is loading the target link.
+2. Priority: sometimes, link data is sourced from multiple sources. In this case, the priority can be used to determine the order of the data sources when loading the target link, which might affect the record source to be set in the target link
+3. Link identifier: the technical name of the target link.
+4. Target link table physical name: the physical name of the target table in the Raw Data Vault.
+5. Source table identifier: the technical name of the source data table in the staging area.
+6. Source column physical name: the physical name of the source column in the source table that holds the business key.
+7. Source column data type: the data type of the source column.
+8. Source column required: indicates if the source column allows NULL values.
+9. Source column default value: indicates the default value of the source column.
+10. Source column computation: if the source column is a computed field, provide the expression that computes the column value for documentation purposes.
+11. Source data type: the data type of the source business key column.
+12. Business key driving flag: indicates if this business key is part of the driving key (if any).
+13. Business key column description: the technical description of the business key column.
+14. Business key column business description: a detailed textual description of the business key column in business terms.
+15. Business key column business name: the common business key column name that is recognized by business users.
+16. Business key column business alias: an alternative business key column name that is recognized by business users.
+17. Business key column acronym name: a common acronym coding of the business key column 
+name.
+18. Hub identifier: the technical name of the referenced hub.
+19. Hub table physical name: the physical table name of the reference hub.
+20. Hub reference number: the number of the hub reference within the sort order of the hub references. This is required to calculate the correct hash key.
+21. Hub primary key physical name: the physical name of the primary key column in the referenced hub table.
+22. Hub business key physical name: the name of the business key column in the hub.
+23. Hub business key column number: the number within the column order of the business key in the hub. Required to calculate the correct hash value.
+24. Hub business key data type: the data type of the business key column in the referenced hub table. Can be used for automatically applying hard rules.
+25. Target column physical name: the physical name of the target hash key column in the link table.
+26. Last seen date flag: indicates if a last seen date is used in the hub and should be updated in the loading process.
+27. Attribute flag: indicates if the column is an attribute instead of a business key. This is required to define degenerated links (refer to Chapter 4).
+28. Hard rules: references to the hard rules that are applied within the loading process for this business key.
+
+#### Metadata for Loading Satellite Entities on Hubs
+1. Data flow name: the name of the data flow that is loading the target satellite.
+2. Satellite identifier: the technical name of the target satellite.
+3. Target satellite table physical name: the physical name of the target table in the Raw Data Vault.
+4. Source table identifier: the technical name of the source data table in the staging area.
+5. Source column physical name: the physical name of the source column in the source table that holds the business key or the descriptive data.
+6. Source column data type: the data type of the source column.
+7. Source column required: indicates if the source column allows NULL values.
+8. Source column default value: indicates the default value of the source column.
+9. Source column computation: if the source column is a computed field, provide the expression that computes the column value for documentation purposes.
+10. Business key driving flag: indicates if this business key is part of the driving key (if any).
+11. Business key column description: the technical description of the business key column.
+12. Business key column business description: a detailed textual description of the business key column in business terms.
+13. Business key column business name: the common business key column name that is recognized by business users.
+14. Business key column business alias: an alternative business key column name that is recognized by business users.
+15. Business key column acronym name: a common acronym coding of the business key column name.
+16. Hub identifier: the technical name of the referenced hub.
+17. Hub table physical name: the physical table name of the reference hub.
+18. Hub primary key physical name: the physical name of the primary key column in the referenced hub table.
+19. Hub business key physical name: the name of the business key column in the hub.
+20. Hub business key column number: the number within the column order of the business key in the hub. Required to calculate the correct hash value.
+21. Hub business key column data type: the data type of the business key column in the referenced hub table. Can be used for automatically applying hard rules.
+22. Target column physical name: the physical name of the target column (for descriptive data) in the satellite table.
+23. Target column data type: the data type of the target column.
+24. Target column required: indicates if the target column is nullable.
+25. Target column default value: the default value of the target column (this should be defined by a hard rule).
+26. Target column description: a technical description of the descriptive attribute in the target.
+27. Target column business description: a textual description of the descriptive attribute in the target, using business terminology.
+28. Target column business name: the common business name of the descriptive attribute that is recognized by business users.
+29. Target column business alias: an alternative column name of the descriptive attribute that is recognized by business users.
+30. Target column acronym name: a common acronym coding of the descriptive attribute’s column name.
+31. Hard rules: references to the hard rules that are applied within the loading process for this business key or descriptive attribute.
+
+#### Metadata for Loading Satellite Entities on Links
+Data flow name: the name of the data flow that is loading the target satellite.
+1. Satellite identifier: the technical name of the target satellite.
+2. Target satellite table physical name: the physical name of the target table in the Raw Data Vault.
+3. Source table identifier: the technical name of the source data table in the staging area.
+4. Source column physical name: the physical name of the source column in the source table that holds the business key or the descriptive data.
+5. Source column data type: the data type of the source column.
+6. Source column required: indicates if the source column allows NULL values.
+7. Source column default value: indicates the default value of the source column.
+8. Source column computation: if the source column is a computed field, provide the expression that computes the column value for documentation purposes.
+9. Business key driving flag: indicates if this business key is part of the driving key (if any).
+10. Business key column description: the technical description of the business key column.
+11. Business key column business description: a detailed textual description of the business key column in business terms.
+12. Business key column business name: the common business key column name that is recognized by business users.
+13. Business key column business alias: an alternative business key column name that is recognized by business users.
+14. Business key column acronym name: a common acronym coding of the business key column name.
+15. Link identifier: the technical name of the referenced parent link.
+16. Link table physical name: the physical table name of the reference link.
+17. Link primary key physical name: the physical name of the primary key column in the referenced link table.
+18. Hub identifier: the technical name of the referenced hub.
+19. Hub table physical name: the physical table name of the reference hub.
+20. Hub reference number: the number of the hub reference within the sort order of the hub references. This is required to calculate the correct hash key.
+21. Hub primary key physical name: the physical name of the primary key column in the referenced hub table.
+22. Hub business key physical name: the name of the business key column in the hub.
+23. Hub business key column number: the number within the column order of the business key in 
+the hub. Required to calculate the correct hash value.
+24. Hub business key column data type: the data type of the business key column in the referenced 
+hub table. Can be used for automatically applying hard rules.
+25. Target column physical name: the physical name of the target column (for descriptive data) in 
+the satellite table.
+26. Target column data type: the data type of the target column
+28. Target column required: indicates if the target column is nullable.
+29. Target column default value: the default value of the target column (this should be defined by a hard rule).
+30. Target column description: a technical description of the descriptive attribute in the target.
+31. Target column business description: a textual description of the descriptive attribute in the target, using business terminology.
+32. Target column business name: the common business name of the descriptive attribute that is 
+recognized by business users.
+33. Target column business alias: an alternative column name of the descriptive attribute that is 
+recognized by business users.
+34. Target column acronym name: a common acronym coding of the descriptive attribute’s column 
+name.
+35. Hard rules: references to the hard rules that are applied within the loading process for this 
+business key or descriptive attribute.
+
+### Capturing Soft Rules
+1. Data flow name (optional): the data flow that is implementing this business rule.
+2. Rule identifier: the technical name of the business rule.
+3. Name: a name for the soft rule understandable by the business.
+4. Description: a technical description of the business rule.
+5. Business description: a textual description of the soft rule in business terms.
+6. Definition: the actual definition of the business rule, using a text-based or graphical notation.
+7. Business area: the functional business area (or business owner) that defines this business rule.
+8. Topic: a given topic that this business rule is part of.
+9. Task/rule set: a more detailed task or rule set that this business rule is part of.
+10. Priority: the priority of the business rule: either “must-have,” “should-have,” “could-have,” or “won’t have.”
+11. Motivation: defines the motivation why this business rule is defined, for example “data integrity,” “security policy,” “customer relationship standards,” etc.
+12. Source: The source of the soft rules definition (for example, project documentation).
+13. Classification: Table 10.10 lists the potential classifications.
+14. Implementation type: Table 10.11 lists the potential rule types.
+15. Keywords: keywords that help to find the soft rule from the business rule collection.
+16. Defined: the name of the person who has defined the soft rule and the date of definition.
+17. Approved: the name of the person who approved the soft rule and the date of approval.
+18. Related rules: relates this soft rule with other hard rules.
+19. Example: provides example inputs and their respective outputs.
+
+### Capturing Data Vault Tables to Information Marts Table Mapping
+1. Data flow name: the name of the data flow that is implementing the soft rule.
+2. Target table identifier: the technical name of the target table (such as dimension or fact table if a dimensional model is being built) based on technical numbering.
+3. Target table physical name: the physical name of the target table in the information mart.
+4. Source identifier: the technical name of the source hub, link, or satellite.
+5. Source table physical name: the physical name of the source table in the Data Vault.
+6. Source column physical name: the physical name of the source column in the source table.
+7. Source column data type: the data type of the source column.
+8. Source column required: indicates if the source column allows NULL values.
+9. Target column physical name: the physical name of the target column (for descriptive data) in the satellite table.
+10. Target column data type: the data type of the target column.
+11. Target column required: indicates if the target column is nullable.
+12. Target column default value: the default value of the target column.
+13. Target column description: a technical description of the target column.
+14. Target column business description: a textual description of the target column, using business terminology.
+15. Target column business name: the common business name of the target column that is recognized by business users.
+16. Target column business alias: an alternative name of the target column that is recognized by business users.
+17. Target column acronym name: a common acronym coding of the column name.
+18. Soft rule: references to the soft rules that are applied within the loading process.
+
+### Capturing Requirements to Information Mart Tables
+Using cross-reference table again to identify the information mart artifacts which are affected by a change of requirements and to identify the requirements which are affected when changing an information mart artifact.
+
+### Capturing Acces Control Lists and other Security Measures
+- Data Sensitivity
+- Data Value
+- Potential remedies per security vulnerability and data item
+- Thread severity
+
+## Implementing the Metrics Vault
+Types of metric:
+- Timing
+- Performance
+- Volume
+- Error
+- Frequency
+- Dependency
+
+## Implementing the Metrics Mart
+A Metric Mart is a special type of information mart designed to store business metrics. After capturing the raw performance data in the Metrics Vault, the next step is to prepare the data for analysis. To support analysis of performance metrics, a data model is required that provides useful information to end-users. This data model is implemented in the Metrics Mart, which is located downstream towards the user.
+
+## Implementing the Error Mart
+The Error Mart captures the following types of records:
+1. Records rejected by the staging area
+2. Records rejected by the Raw Data Vault
+3. Records not processed by the Business Vault
+4. Records not processed by the information marts
+
+
+you can either:
+1. Create common fact table for all error outputs
+2. Create separate fact tables for each error output
+
+# Chapter 11 - DATA EXTRACTION
+## The Purpose of Staging Area
+The primary purpose of the staging area is to reduce the workload on the operational systems by loading all required data into a separate database first. This ingestion of data should be performed as quickly as possible in any format provided. 
+
+The advantage of this staging area is that the data is under technical control of the data warehouse team and can be indexed, sorted, joined, etc. All operations available in relational database systems are available for the staged data.
+
+truncate the staging tables, disable indexes, bulk read on the source data, compute and add system-generated attributes, true duplicates should be removed, inserted into the staging table, indexes are rebuilt
+
+### Hashing in the Data Warehouse
+Drawback of sequence number:
+- Dependencies in the loading processes
+- Waiting on caches for parent lookups
+- Dependencies on serial algorithms
+- Complete restore limitations
+- Required synchronization of multiple environments
+- Data distribution and partitioning in MPP environments
+- Scalability issues
+- Difference of NoSQL engines
+
+Hash characteristic:
+- Deterministic: for a given block of input data, the hash function will always generate the same hash value whenever called.
+- Irreversible: a hash function is an irreversible, one-way function. It is not possible to derive the source data from the hash value.
+- Avalanche effect: if the input data is changed only slightly, the hash value should change drastically. Also known as a cascading effect.
+- Collision-free: any two different blocks of input data should always produce different hash values. The unlikely event of two input blocks generating the same hash value is called a collision. 
+
+### Purpose of the Load Date
+The load date has to be created by the data warehouse and not sourced from an external system. This also ensures the auditability of the data warehouse system because it allows auditors to reconcile the raw data warehouse data to the source systems. The load date further helps to analyze errors by loading cycles or inspecting the arrival of data in the data warehouse. It is also possible to analyze the actual latency between time of creation and time of arrival in the data warehouse.
+
+### Purpose of the Record Source
+The record source has been added for debugging purposes only. It can and should be used by the data warehousing team to trace where the row data came from.
+
+### Sourcing Flat Files
+- Control Flow -> controls the order and execution of tasks.
+- Flat File Connection Manager -> defines where the flat file is and how to read it.
+- Data Flow -> extracts, transforms, and loads (ETL) the data.
+
+# Chapter 12 - LOADING THE DATA VAULT
+The top issues that affect the performance of the ETL loads:
+1. Complexity
+2. Data size
+3. Latency
+
+
+
+The key to improving the performance of data warehouse loading processes is based on 2 ideas:
+1. Divide and conquer the problem: separate the processing of the loading procedures into separate groups in order to deal with smaller problems using a focused approach. 
+2. Apply set logic: reduce the amount of data each process deals with by separating the data into different processes and reducing the amount of data as it is being processed.
+
+
+
+Data warehousing issues:
+- Latency issues
+- Arrival issues
+- Network issues
+- Security issues
+
+## Loading Raw Data Vault Entities
+### Hubs
+1. retrieve all business keys from the source.
+2. Combine keys from multiple sources
+3. Determine the record source for the hub
+4. Process only new keys
+5. Use staging area for lookup
+6. Drop duplicates
+7. Insert into Hub table
+8. If the business key consists of multiple columns, the lookup must include all parts of the composite key.
+
+### Links
+1. Retrieve a distinct list of business key relationships from the source system
+2. Lookup in the target link table using hash keys
+3. Handle rare hash collisions
+4. Insert new links
+5. Drop duplicates
+6. Avoid combining links of different grain (different types of relationships) into the same link table
+7. Attach descriptive data via satellites
+
+### Satellites
+1. Retrieve potential changes from staging
+2. Retrieve the latest record from the target satellite
+3. Compare staging record with latest satellite record
+4. Column comparison considerations
+5. Performance optimization with hash diffs
+6. Load the satellite
+
+## Loading Reference Table
+### No-History Reference Table
+If reference data should be loaded without taking care of the history, the loading processcan be drastically simplified by using SQL views to create virtual reference tables. 
+
+### History-based Reference Table
+The loading process is the same as described in the previous section.
+
+### Code and Description
+Use only one reference table to capture code and descriptions
+
+### Code and Description with History
+Same as History-based Reference Table
+
+## Truncating the Staging Area
+2 choices:
+- Truncate Table
+- Delete Specific Records: if the staging area receives multiple batches over the day and the data warehouse team cannot guarantee that all data has been loaded into the Raw Data Vault
+
+# Chapter 13 - IMPLEMENTING DATA QUALITY
+1. RDV is supposed to capture all historical data, even if flawed, so you don’t lose information. Just load the bad data into the RDV
+2. Instead of filtering or blocking the record, adjust your loading process so that all source data makes it into the RDV.
+3. Don’t prohibit NULLs in the Raw Data Vault — let them in, because they’re part of the source reality.
+
+## Business Expectation Regarding Data Quality
+- Data quality expectations: these are expressed by rules, which measure the validity of the data values. This includes the identification of missing or unusable data, the description of data in conflict, the determination of duplicate records and the exploration of missing links between the data
+- Business expectations: these are measures related to the performance, productivity, and efficiency of processes.
+
+## The Cost of Low Quality Data
+- Customer and partner satisfaction
+- Regulatory impacts
+- Financial costs
+- Organizational mistrust
+- Re-engineering
+- Decision-making
+- Business strategy
+
+## The Value of Bad Data
+Having the bad data in the data warehouse helps to reconcile integrated and altered data with the source systems and with business requirements. This is the reason why bad data, and ugly-looking data, is kept in the data warehouse and not modified, transformed or fixed in any sense on the way into the data warehouse.
+
+## Data Quality in the Architecture
+Data quality routines correct errors, complete raw data or transform it to provide more business value. 
+
+## Correcting Errors in the Data Warehouse
+- Transform, enhance, and calculate derived data
+- Standardization of data
+- Correct and complete data
+- Match and consolidate data
+- Data quality tagging
+
+## Transform, Enhance, and Calculate Derived Data
+Types of quality issue:
+- Dummy values: the source might compensate for missing values by the use of default values.
+- Reused keys: business keys or surrogate keys are reused in the source system, which might lead to identification issues.
+- Multipurpose fields: fields in the source database are overloaded and used for multiple purposes. It requires extra business logic to ensure the integrity of the data or use it.
+- Multipurpose tables: similarly, relational tables can be used to store different business entities, for example, both people and corporations. These tables contain many empty columns because many columns are only used by one type of entity and not the others. Examples include the first and last name of an individual person versus the organizational name.
+- Noncompliance with business rules: often, the source data is not in conformance with set  business rules due to a lack of validation. The values stored in the source database might not represent allowed domain values.
+- Conflicting data from multiple sources: a common problem when loading data from multiple source systems is that the raw data might be in conflict. For example, the delivery address of a customer or the spelling of the customer’s first name (“Dan” versus “Daniel”) might be different.
+- Redundant data: some operational databases contain redundant data, primarily because of data modeling issues. This often leads to inconsistencies in the data, similar to the conflicts from multiple source systems (which are redundant data, as well).
+- Smart columns: some source system columns contain “smart” data, that is data with structural meaning. This is often found in business keys (review smart keys in Chapter 4, Data Vault 2.0 Modeling) but can be found in descriptive data as well. XML and JSON encoded columns are other examples of such smart columns, because they also provide structural meaning.
+
+
+
+There are various types of data that can be added to enhance the data:
+- Geographic information
+- Demographic information
+- Psychographic information
+
+## Standardization of Data
+- Stripping extraneous punctuation or white spaces
+- Rearranging data
+- Reordering data
+- Domain value redundancy
+- Format inconsistencies
+- Mapping data
+
+## Correct and Complete Data
+Multiple options to handle uncorrectable data:
+- Reject the data
+- Accept the data without a change
+- Accept the data with tagging
+- Estimate the correct or approximate values
+
+## Match and Consolidate Data
+A typical task in data warehousing is to resolve identities that:
+- Represent the same entity: here, duplicate business keys or relationships from the same or different source systems mean the same business entity. The typical goal is to merge the business entities into one and consolidate the data from both records or remove duplicate data in favor of a master record.
+- Represent the wrong entity: there are cases where the business user thinks that a record is not in the system because of a slight variation in the descriptive data, which leads to an unfound (yet existing) record.
+
+# Chapter 14 - LOADING THE DIMENSIONAL INFORMATION MART
+## Using the Business Vault as an Intermediate to the Information Mart
+The Business Vault serves as an intermediate between the Raw Data Vault and information marts. By doing so, it stores intermediate results from processed (soft) business rules that are stored for reusability.
+
+### Computed Satellites
+There are multiple advantages of implementing soft business rules using virtualized
+computed satellites:
+- The implementation is simple and comprehensible: usually, for each soft business rule definition, there should be an implementation. By using virtual satellites, this implementation is very compact. The alternative is to use a more complex ETL process,
+especially if the business rule is too complex to be covered in a SQL statement.
+- Quick development: developing a SQL view is certainly faster than developing an ETL process with similar functionality (however, it might depend on the tools used).
+- Quick deployment: it is also often faster to deploy a new or modified SQL view than deploying ETL processes. These advantages are especially helpful when developing the data warehouse using the agile Data Vault 2.0 methodology. However, there are also some disadvantages:
+- Limited complexity: if the soft business rule definition requires a too complex implementation, it might be required to split the implementation into multiple computed satellites (or other entities in the Business Vault) or implement the soft business rule using an ETL tools such as SSIS.
+- Performance: while virtualization works well in many cases, some soft business rules require too much computing power, for example because many calculations are required or many joins are involved. In this case, it might be better to materialize the computed satellite by using ETL tools.
+
+## Materializing the Information Mart
+1. Loading Type 1 Dimensions -> no history of the dimension members but only the most current version of the descriptive data. Correct errors in data or update attributes without keeping history.
+2. Loading Type 2 Dimensions -> Keep historical changes of attributes over time. New records from the Raw Data Vault source are loaded into the target, based on the hash key and the load date.
+3. Loading Fact Tables
+4. Loading Aggregated Fact Tables
+
+## Leveraging PIT and Bridge Tables for Virtualization
+Factors that Affect Performance of Virtualized Facts:
+-  Joins, which might require complex join conditions
+-  Aggregations and grain changes, which require resource intensive computations to aggregate or recompute the data.
+
+### Loading PIT Tables
+1. Joining the data from multiple satellites
+2. Implementing the business logic
+
+### Loading Bridge Tables
+1. Joins between links
+2. Required aggregations and otherwise computed values
+3. Applying additional customization
+
+## Implementing Temporal Dimension
+A temporal dimension is a dimension table that explicitly stores time-related information to track when facts occurred or when dimension attributes were valid.
+
+## Implementing Data Quality Using PIT Tables
+Another application of PIT tables is to use it for data cleansing purposes.
+
+## Dealing with Reference Data
+Instead of modifying the code in the Raw Data Vault satellite, which would compromise the auditability of the Raw Data Vault, the code from a specific source system is replaced or enriched by descriptive data from reference tables when the Business Vault or information marts are being built.
+
+## Hash Key in Information Mart
+Using hash keys in the data warehouse, including in the dimensional model, is future proof for all requirements regarding the volume, variety and velocity of data and thus the recommended approach for building information marts and multidimensional databases.
+
+If you have a performance or storage issue in your solution, our first recommendation is to review the number of dimensions in your information mart and dependent cubes. In most cases, it is possible to reduce the number of dimensions by providing multiple cubes that are more tailored for specific business cases.
+
+If you still have an issue after reducing the number of dimensions in your solution or if reducing the dimensions is not an option, you should consider storing the hash keys using a binary datatype (16-bytes hash value binary format)
+
+
+
