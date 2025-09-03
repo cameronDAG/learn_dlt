@@ -19,8 +19,8 @@ CREATE TABLE META_MART.BUSINESS_METADATA (
 CREATE TABLE META_MART.TECHNICAL_METADATA (
     TABLE_NAME STRING,
     TABLE_TYPE STRING,       -- HUB / LINK / SAT
-    REFERENCED_ENTITY STRING,
-    REFERENCED_ENTITY_TYPE STRING,
+    REFERENCED_ENTITY ARRAY,
+    REFERENCED_ENTITY_TYPE ARRAY,
     HASHKEY STRING,
     HASHDIFF STRING,
     PAYLOAD_COLUMNS ARRAY,
@@ -30,6 +30,33 @@ CREATE TABLE META_MART.TECHNICAL_METADATA (
     LAST_UPDATED TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Process Execution Metadata
+CREATE TABLE MANAJEMEN_KOS.META_MART.PROCESS_EXECUTION_METADATA (
+	QUERY_ID VARCHAR(16777216),
+    UNIQUE_ID VARCHAR(16777216),
+	RELATION_NAME VARCHAR(16777216),
+	STATUS VARCHAR(16777216),
+	COMPILE_STARTED_AT TIMESTAMP_TZ(9),
+	EXECUTE_COMPLETED_AT TIMESTAMP_TZ(9),
+	EXECUTION_TIME FLOAT,
+	MESSAGE VARCHAR(16777216),
+	ROWS_AFFECTED NUMBER(19,0)
+);
+
+-- Error Process Execution Metadata
+CREATE TABLE MANAJEMEN_KOS.META_MART.ERROR_PROCESS_EXECUTION_METADATA (
+    UNIQUE_ID VARCHAR(16777216),
+    NAME VARCHAR(16777216),
+    DATABASE_NAME VARCHAR(16777216),
+    SCHEMA_NAME VARCHAR(16777216),
+    PACKAGE_NAME VARCHAR(16777216),
+	RELATION_NAME VARCHAR(16777216),
+	STATUS VARCHAR(16777216),
+	COMPILE_STARTED_AT TIMESTAMP_TZ(9),
+	EXECUTE_COMPLETED_AT TIMESTAMP_TZ(9),
+	EXECUTION_TIME FLOAT,
+	MESSAGE VARCHAR(16777216)
+);
 ```
 
 3. Lakukan ETL load dari API property ke snowflake dan buat data vault entity yang dubtuhkan (HUB, LINK, SAT) bisa mengikuti cara di [tutorial_setting_data_vault](datavault4dbt_and_automatedv.md#automatedv)
@@ -49,17 +76,14 @@ INSERT INTO BUSINESS_METADATA VALUES(
 ('HUB_Property', 'SOURCE','Asal data', 'Property', current_timestamp)
 ```
 
+![business_metadata](business_metadata.png)
+
 ## Technical Metadata
 Tujuan: Describes the technical aspect of data
 
 
 Cara Implementasi: Menggunakan post-hook macro di dbt. Contoh untuk HUB_Property:
 ```sql
-{% set run_started_at = modules.datetime.datetime.utcnow() %}
-{% set run_finished_at = modules.datetime.datetime.utcnow() %}
-{% set rows_processed = this.run_results[0].rows_affected %}
-
-
 {{ config(
     materialized='incremental',
     post_hook=[
@@ -68,10 +92,10 @@ Cara Implementasi: Menggunakan post-hook macro di dbt. Contoh untuk HUB_Property
             table_type='HUB',
             hashkey='HK_PROPERTY_H',
             hashdiff='',
-            payload_columns=payload_columns,
+            payload_columns=['HK_PROPERTY_H', 'ID', 'LOAD_DATETIME', 'SOURCE'],
             effective_from=effective_from,
-            load_datetime='LOAD_DATETIME',
-            source='SOURCE',
+            load_datetime=LOAD_DATETIME,
+            source=SOURCE,
             referenced_entity='',
             referenced_entity_type=''
         ) }}"
@@ -117,8 +141,16 @@ USING (
     SELECT
         '{{ table_name }}' AS TABLE_NAME,
         '{{ table_type }}' AS TABLE_TYPE,
-        '{{ referenced_entity }}' AS REFERENCED_ENTITY,
-        '{{ referenced_entity_type }}' AS REFERENCED_ENTITY_TYPE,
+        ARRAY_CONSTRUCT(
+            {% for col in referenced_entity %}
+                '{{ col }}'{% if not loop.last %}, {% endif %}
+            {% endfor %}
+        ) AS REFERENCED_ENTITY,
+        ARRAY_CONSTRUCT(
+            {% for col in referenced_entity_type %}
+                '{{ col }}'{% if not loop.last %}, {% endif %}
+            {% endfor %}
+        ) AS REFERENCED_ENTITY_TYPE,
         '{{ hashkey }}' AS HASHKEY,
         '{{ hashdiff }}' AS HASHDIFF,
         ARRAY_CONSTRUCT(
@@ -160,11 +192,20 @@ Kelemahan:
 - Belum bisa fully automated karena Post-hook dieksekusi saat compile SQL, bukan runtime Python/Jinja biasa, sementara metadata_dict hanya tersedia di scope file model itu sendiri saat render model. Sehingga parameter pada pemanggilan macros harus ditulis secara manual
 - Pencatatannya baru bisa ke table level, belum ke column level
 
+
+Pertimbangan:
+- memakai manifest.json daripada post-hook macros yang semi-manual, tetapi di manifest.json tidak ditampilkan relationship antar model
+
+![technical_part_1](Technical_metadata_part_1.png)
+![technical_part_2](Technical_metadata_part_2.png)
+
 ## Process Execution Metadata
 Tujuan: Provides statistic about running ETL processes
 
 
-Cara implementasi: Parse file run_results.json yang akan tergenerasi setiap kali dbt melakukan run. Ubah ke bentuk dictionary dan load ke dalam data warehouse menggunakan dlt. File json = [json](run_results.json)
+Cara implementasi: 
+### Cara Lama
+Parse file run_results.json yang akan tergenerasi setiap kali dbt melakukan run. Ubah ke bentuk dictionary dan load ke dalam data warehouse menggunakan dlt. File json = [json](run_results.json)
 
 - Parsing json menjadi dictionary
 ```py
@@ -214,3 +255,80 @@ def run_metadata_pipeline():
     load_info = pipeline.run(process_execution_resource())
     print(load_info)
 ```
+
+### Cara Baru
+Menggunakan on-run-end hook yang akan menjalankan perintah sql setiap kali dbt run atau build 
+
+```yml
+on-run-end:
+  - |
+      {% for result in results -%}
+      insert into META_MART.PROCESS_EXECUTION_METADATA
+      values (
+          '{{ result.adapter_response.get("query_id","") if result.adapter_response is defined else "" }}',
+          '{{ result.node.unique_id }}',
+          {% if result.node.relation_name is not none %}'{{ result.node.relation_name }}'{% else %}null{% endif %},
+          '{{ result.status }}',
+          {% set compile_time = (result.timing | selectattr('name','equalto','compile') | map(attribute='started_at') | list | first) %}
+          {% if compile_time %}'{{ compile_time }}'{% else %}null{% endif %},
+          {% set execute_time = (result.timing | selectattr('name','equalto','execute') | map(attribute='completed_at') | list | first) %}
+          {% if execute_time %}'{{ execute_time }}'{% else %}null{% endif %},
+          {{ result.execution_time | default(0) }},
+          '{{ result.message | replace("'", "''") }}',
+          {{ result.adapter_response.get("rows_affected", "null") if result.adapter_response is defined else "null" }}
+      );
+      {%- endfor %}
+```
+
+Penjelasan:
+- Setiap kali melakukan run/build, dbt akan membuat sebuah object bernama results(nantinya dibuat menjadi run_results.json yang kita gunakan di metode sebelumnya)
+- Ambil variabel-variabel yang diperlukan dalam object results untuk diinsert ke dalam data warehouse.
+
+
+
+Notes:
+- Kalau mau ambil variabel dari object results, jangan terpaku sama struktur filenya di json. Sebaiknya print keseluruhan isi object dalam bentuk string untuk liat struktur (karena sempet makan waktu banyak pas mau ambil unique_id yang kalau secara logika saat mengamati struktur file json terletak di result.unique_id, dan baru ketahuan setelah di print isi object bahwa unique_id diakses di result.node.unique_id)
+
+![process_ex_1](process_execution_part_1.png)
+![process_ex_2](process_execution_part_2.png)
+
+
+
+Kolom message apabila terjadi error dalam run
+![message_column](message_column.png)
+
+## Error Process Execution Metadata
+Tujuan: Berisi mengenai info tabel yang gagal diload
+
+
+Cara Implementasi: Gunakan on-run-end hook
+```yml
+- |
+      {% for result in results %}
+          {% if result.status == "error" and result.node.resource_type == "model" %}
+              insert into META_MART.ERROR_PROCESS_EXECUTION_METADATA 
+              values (
+                  '{{ result.node.unique_id }}',
+                  '{{ result.node.name }}',
+                  '{{ result.node.database }}',
+                  '{{ result.node.schema }}',
+                  '{{ result.node.package_name }}',
+                  {% if result.node.relation_name is not none %}'{{ result.node.relation_name }}'{% else %}null{% endif %},
+                  '{{ result.status }}',
+                  {% set compile_time = (result.timing | selectattr('name','equalto','compile') | map(attribute='started_at') | list | first) %}
+                  {% if compile_time %}'{{ compile_time }}'{% else %}null{% endif %},
+                  {% set execute_time = (result.timing | selectattr('name','equalto','execute') | map(attribute='completed_at') | list | first) %}
+                  {% if execute_time %}'{{ execute_time }}'{% else %}null{% endif %},
+                  {{ result.execution_time | default(0) }},
+                  '{{ result.message | replace("'", "''") }}'
+              );
+          {% endif %}
+      {% endfor %}
+```
+
+Hasil Tabel:
+
+
+![error_part1](error_metadata_part_1.png)
+![error_part2](error_metadata_part_2.png)
+![error_part3](error_metadata_part_3.png)
